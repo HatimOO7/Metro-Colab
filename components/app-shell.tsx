@@ -158,6 +158,16 @@ const defaultForm: CalendarForm = {
   scheduledTime: "",
 };
 
+function itemToForm(item: CalendarItem): CalendarForm {
+  return {
+    title: item.title,
+    description: item.description ?? "",
+    itemType: item.itemType,
+    category: item.category,
+    scheduledTime: item.scheduledTime ?? "",
+  };
+}
+
 function toDateKey(date: Date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -261,21 +271,41 @@ function useCalendarItems() {
     return payload.item as CalendarItem;
   }, []);
 
-  const updateItem = React.useCallback(async (id: number, input: Partial<CalendarItem>) => {
-    const response = await fetch(`/api/calendar-items/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-    });
-    const payload = await response.json();
+  const updateItem = React.useCallback(
+    async (id: number, input: Partial<CalendarItem>, options?: { optimistic?: boolean }) => {
+      let previousItems: CalendarItem[] | null = null;
 
-    if (!response.ok) {
-      throw new Error(payload.error ?? "Unable to update calendar item");
-    }
+      if (options?.optimistic) {
+        setItems((currentItems) => {
+          previousItems = currentItems;
+          return currentItems.map((item) => (item.id === id ? { ...item, ...input } : item));
+        });
+      }
 
-    setItems((currentItems) => currentItems.map((item) => (item.id === id ? payload.item : item)));
-    return payload.item as CalendarItem;
-  }, []);
+      try {
+        const response = await fetch(`/api/calendar-items/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(input),
+        });
+        const payload = await response.json();
+
+        if (!response.ok) {
+          throw new Error(payload.error ?? "Unable to update calendar item");
+        }
+
+        setItems((currentItems) => currentItems.map((item) => (item.id === id ? payload.item : item)));
+        return payload.item as CalendarItem;
+      } catch (updateError) {
+        if (previousItems) {
+          setItems(previousItems);
+        }
+
+        throw updateError;
+      }
+    },
+    []
+  );
 
   const deleteItem = React.useCallback(async (id: number) => {
     const response = await fetch(`/api/calendar-items/${id}`, { method: "DELETE" });
@@ -552,6 +582,7 @@ function CalendarPlanner() {
   const [anchorDate, setAnchorDate] = React.useState(today);
   const [dialogDate, setDialogDate] = React.useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = React.useState(false);
+  const [editingItem, setEditingItem] = React.useState<CalendarItem | null>(null);
   const [formError, setFormError] = React.useState<string | null>(null);
   const [actionError, setActionError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
@@ -574,6 +605,15 @@ function CalendarPlanner() {
 
   function openDialog(dateKey: string | null) {
     setDialogDate(dateKey);
+    setEditingItem(null);
+    setFormError(null);
+    setActionError(null);
+    setDialogOpen(true);
+  }
+
+  function openEditDialog(item: CalendarItem) {
+    setDialogDate(item.scheduledDate);
+    setEditingItem(item);
     setFormError(null);
     setActionError(null);
     setDialogOpen(true);
@@ -607,7 +647,7 @@ function CalendarPlanner() {
     setActionError(null);
 
     try {
-      await createItem({
+      const payload = {
         title: form.title,
         description: form.description || null,
         itemType: form.itemType,
@@ -616,7 +656,14 @@ function CalendarPlanner() {
         scheduledDate: status === "scheduled" ? dialogDate : null,
         scheduledTime: form.scheduledTime || null,
         status,
-      });
+      };
+
+      if (editingItem) {
+        await updateItem(editingItem.id, payload);
+      } else {
+        await createItem(payload);
+      }
+
       setDialogOpen(false);
     } catch (saveError) {
       setFormError(saveError instanceof Error ? saveError.message : "Unable to save item.");
@@ -641,7 +688,7 @@ function CalendarPlanner() {
       await updateItem(itemId, {
         scheduledDate: dateKey,
         status: "scheduled",
-      });
+      }, { optimistic: true });
     } catch (dropError) {
       setActionError(dropError instanceof Error ? dropError.message : "Unable to reschedule item.");
     }
@@ -789,6 +836,7 @@ function CalendarPlanner() {
                         <CalendarTaskChip
                           key={item.id}
                           item={item}
+                          onOpen={() => openEditDialog(item)}
                           onDelete={() => void handleDelete(item.id)}
                         />
                       ))
@@ -813,6 +861,7 @@ function CalendarPlanner() {
           selectedDate={dialogDate}
           saving={saving}
           error={formError}
+          item={editingItem}
           onClose={() => setDialogOpen(false)}
           onSave={handleSave}
         />
@@ -821,7 +870,15 @@ function CalendarPlanner() {
   );
 }
 
-function CalendarTaskChip({ item, onDelete }: { item: CalendarItem; onDelete: () => void }) {
+function CalendarTaskChip({
+  item,
+  onOpen,
+  onDelete,
+}: {
+  item: CalendarItem;
+  onOpen: () => void;
+  onDelete: () => void;
+}) {
   const category = getCategory(item.category);
   const TypeIcon = item.itemType === "reminder" ? Bell : CheckCircle2;
 
@@ -833,7 +890,20 @@ function CalendarTaskChip({ item, onDelete }: { item: CalendarItem; onDelete: ()
         event.dataTransfer.setData("text/plain", String(item.id));
         event.dataTransfer.effectAllowed = "move";
       }}
-      className={cn("group rounded-lg border border-border border-l-4 bg-white p-2 shadow-sm", category.border)}
+      onClick={onOpen}
+      className={cn(
+        "group cursor-pointer rounded-lg border border-border border-l-4 bg-white p-2 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-soft",
+        category.border
+      )}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onOpen();
+        }
+      }}
+      aria-label={`Edit ${item.title}`}
     >
       <div className="flex min-w-0 items-start gap-1.5">
         <GripVertical className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
@@ -846,7 +916,10 @@ function CalendarTaskChip({ item, onDelete }: { item: CalendarItem; onDelete: ()
         </div>
         <button
           type="button"
-          onClick={onDelete}
+          onClick={(event) => {
+            event.stopPropagation();
+            onDelete();
+          }}
           className="grid h-5 w-5 shrink-0 place-items-center rounded-md text-muted-foreground opacity-0 transition hover:bg-red-50 hover:text-destructive group-hover:opacity-100"
           aria-label={`Delete ${item.title}`}
           title="Delete"
@@ -947,16 +1020,19 @@ function TaskDialog({
   selectedDate,
   saving,
   error,
+  item,
   onClose,
   onSave,
 }: {
   selectedDate: string | null;
   saving: boolean;
   error: string | null;
+  item: CalendarItem | null;
   onClose: () => void;
   onSave: (form: CalendarForm, status: "scheduled" | "draft") => Promise<void>;
 }) {
-  const [form, setForm] = React.useState<CalendarForm>(defaultForm);
+  const [form, setForm] = React.useState<CalendarForm>(() => (item ? itemToForm(item) : defaultForm));
+  const isEditing = Boolean(item);
 
   function updateForm<Field extends keyof CalendarForm>(field: Field, value: CalendarForm[Field]) {
     setForm((currentForm) => ({ ...currentForm, [field]: value }));
@@ -967,9 +1043,9 @@ function TaskDialog({
       <div className="w-full max-w-lg rounded-lg border border-border bg-card p-4 shadow-soft">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-sm font-semibold">Create task</p>
+            <p className="text-sm font-semibold">{isEditing ? "Edit task" : "Create task"}</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              {selectedDate ? `Scheduling for ${formatDateLabel(selectedDate)}` : "Saving as an unscheduled draft"}
+              {selectedDate ? `Scheduled for ${formatDateLabel(selectedDate)}` : "Saving as an unscheduled draft"}
             </p>
           </div>
           <button
@@ -1068,7 +1144,7 @@ function TaskDialog({
               disabled={saving || !selectedDate}
             >
               {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <CalendarDays className="mr-2 h-4 w-4" aria-hidden="true" />}
-              Schedule task
+              {isEditing ? "Save changes" : "Schedule task"}
             </Button>
           </div>
         </form>
