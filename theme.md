@@ -2,16 +2,16 @@
 
 ## Personality
 
-Metro Colab should feel like a calm productivity studio: warm, modern, organized, and quietly playful. The interface should support repeated daily work without feeling heavy or overly decorative.
+Metro Colab should feel like a bright productivity studio: warm, modern, organized, and energetic without becoming loud. The interface should support repeated daily work while still feeling fresh and awake.
 
 ## Color Palette
 
-- Background: warm canvas, `hsl(39 52% 96%)`.
+- Background: bright warm canvas, `hsl(42 78% 97%)`.
 - Surface: clean white cards for focused content.
-- Sidebar: soft warm tint, `hsl(37 58% 94%)`.
-- Text: ink navy, `hsl(224 26% 15%)`.
-- Muted text: slate gray, `hsl(225 10% 42%)`.
-- Borders: low-contrast warm gray, `hsl(34 29% 85%)`.
+- Sidebar: fresh warm tint, `hsl(39 88% 94%)`.
+- Text: ink navy, `hsl(222 31% 13%)`.
+- Muted text: slate gray, `hsl(222 13% 39%)`.
+- Borders: low-contrast warm gray, `hsl(34 38% 84%)`.
 - Accent families:
   - Coral for dashboard and priority moments.
   - Sky for calendar and discovery.
@@ -29,17 +29,18 @@ Metro Colab should feel like a calm productivity studio: warm, modern, organized
 ## Spacing And Shape
 
 - Primary radius: `8px`.
-- Use compact sidebar controls: `36px` item height, small icon/text gaps, and short group spacing.
+- Use compact sidebar controls: `32px` item height, small icon/text gaps, and short group spacing.
 - Cards should be single-level containers only. Avoid nested card compositions.
 - Use soft shadows sparingly for active navigation and important surfaces.
 
 ## Sidebar Guidelines
 
-- Expanded width should stay near `240px`.
-- Collapsed width should stay near `72px`.
+- Expanded width should stay near `224px`.
+- Collapsed width should stay near `68px`.
 - Collapsed mode shows icons only and must preserve accessible labels through `aria-label` and `title`.
 - Group labels should appear only when expanded.
 - Icons should be Lucide icons with semantic color accents.
+- Group labels should remain visible and scannable in expanded mode, using compact uppercase text.
 
 ## Dashboard Content
 

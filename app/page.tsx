@@ -83,19 +83,19 @@ export default function Home() {
       <div className="flex min-h-screen flex-col md:flex-row">
         <aside
           className={cn(
-            "flex shrink-0 flex-col border-b border-border bg-sidebar px-3 py-4 transition-all duration-300 md:min-h-screen md:border-b-0 md:border-r",
-            collapsed ? "md:w-[72px]" : "md:w-[240px]"
+            "flex shrink-0 flex-col border-b border-border bg-sidebar px-2.5 py-3 transition-all duration-300 md:min-h-screen md:border-b-0 md:border-r",
+            collapsed ? "md:w-[68px]" : "md:w-[224px]"
           )}
         >
           <div className="flex items-center justify-between gap-2 px-1">
             <div className="flex min-w-0 items-center gap-2">
-              <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-foreground text-background shadow-soft">
-                <Layers3 className="h-5 w-5" aria-hidden="true" />
+              <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-white shadow-soft [background:var(--primary-gradient)]">
+                <Layers3 className="h-4 w-4" aria-hidden="true" />
               </div>
               {!collapsed && (
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold leading-5">Metro Colab</p>
-                  <p className="truncate text-[11px] text-muted-foreground">Think, plan, create</p>
+                  <p className="truncate text-[10px] text-muted-foreground">Think, plan, create</p>
                 </div>
               )}
             </div>
@@ -108,15 +108,15 @@ export default function Home() {
               aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
               title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             >
-              {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+              {collapsed ? <PanelLeftOpen className="h-3.5 w-3.5" /> : <PanelLeftClose className="h-3.5 w-3.5" />}
             </Button>
           </div>
 
-          <nav className="mt-5 flex flex-1 flex-col gap-4" aria-label="Primary navigation">
+          <nav className="mt-4 flex flex-1 flex-col gap-3" aria-label="Primary navigation">
             {menuGroups.map((group) => (
               <div key={group.label}>
                 {!collapsed && (
-                  <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  <p className="mb-1 px-2 text-[9px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
                     {group.label}
                   </p>
                 )}
@@ -131,16 +131,16 @@ export default function Home() {
                         type="button"
                         onClick={() => setActiveItem(item.label)}
                         className={cn(
-                          "flex h-9 w-full items-center gap-2 rounded-lg px-2 text-left text-xs font-medium transition",
+                          "flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[11px] font-semibold transition",
                           collapsed && "justify-center px-0",
                           active
-                            ? "bg-sidebar-active text-foreground shadow-soft"
-                            : "text-muted-foreground hover:bg-white/70 hover:text-foreground"
+                            ? "bg-sidebar-active text-foreground shadow-soft ring-1 ring-white/70"
+                            : "text-muted-foreground hover:bg-white/75 hover:text-foreground"
                         )}
                         aria-label={item.label}
                         title={item.label}
                       >
-                        <Icon className={cn("h-4 w-4 shrink-0", item.color)} aria-hidden="true" />
+                        <Icon className={cn("h-3.5 w-3.5 shrink-0", item.color)} aria-hidden="true" />
                         {!collapsed && <span className="truncate">{item.label}</span>}
                       </button>
                     );
@@ -150,19 +150,19 @@ export default function Home() {
             ))}
           </nav>
 
-          <div className="mt-5 rounded-lg border border-border bg-white/70 p-2">
+          <div className="mt-4 rounded-lg border border-border bg-white/80 p-2">
             {collapsed ? (
               <div className="grid place-items-center">
-                <UsersRound className="h-4 w-4 text-emerald-600" aria-hidden="true" />
+                <UsersRound className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" />
               </div>
             ) : (
               <div className="flex items-center gap-2">
-                <div className="grid h-8 w-8 place-items-center rounded-lg bg-emerald-100 text-emerald-700">
-                  <UsersRound className="h-4 w-4" aria-hidden="true" />
+                <div className="grid h-7 w-7 place-items-center rounded-lg bg-emerald-100 text-emerald-700">
+                  <UsersRound className="h-3.5 w-3.5" aria-hidden="true" />
                 </div>
                 <div className="min-w-0">
-                  <p className="truncate text-xs font-semibold">Team workspace</p>
-                  <p className="truncate text-[11px] text-muted-foreground">3 online collaborators</p>
+                  <p className="truncate text-[11px] font-semibold">Team workspace</p>
+                  <p className="truncate text-[10px] text-muted-foreground">3 online collaborators</p>
                 </div>
               </div>
             )}
