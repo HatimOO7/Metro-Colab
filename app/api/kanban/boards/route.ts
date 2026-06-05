@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { db, kanbanBoards, kanbanColumns } from "@/db";
 import {
   defaultKanbanColumns,
+  getBoardWithDetails,
   getBoardsWithDetails,
   getDatabaseUser,
   normalizeText,
@@ -60,8 +61,7 @@ export async function POST(request: Request) {
     }))
   );
 
-  const boards = await getBoardsWithDetails(user.id);
-  const createdBoard = boards.find((currentBoard) => currentBoard.id === board.id);
+  const createdBoard = await getBoardWithDetails(board.id, user.id);
 
   return NextResponse.json({ board: createdBoard }, { status: 201 });
 }

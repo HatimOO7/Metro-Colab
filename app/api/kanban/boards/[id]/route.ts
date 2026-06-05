@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 
 import { db, kanbanBoards } from "@/db";
-import { getBoardsWithDetails, getDatabaseUser, normalizeText } from "@/lib/kanban";
+import { getBoardWithDetails, getDatabaseUser, normalizeText } from "@/lib/kanban";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -62,8 +62,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Board not found" }, { status: 404 });
   }
 
-  const boards = await getBoardsWithDetails(user.id);
-  return NextResponse.json({ board: boards.find((currentBoard) => currentBoard.id === board.id) });
+  return NextResponse.json({ board: await getBoardWithDetails(board.id, user.id) });
 }
 
 export async function DELETE(_request: Request, context: RouteContext) {

@@ -37,3 +37,9 @@ CREATE TABLE "kanban_tasks" (
 	CONSTRAINT "kanban_tasks_column_id_kanban_columns_id_fk" FOREIGN KEY ("column_id") REFERENCES "kanban_columns"("id") ON DELETE cascade,
 	CONSTRAINT "kanban_tasks_calendar_item_id_calendar_items_id_fk" FOREIGN KEY ("calendar_item_id") REFERENCES "calendar_items"("id") ON DELETE set null
 );
+
+CREATE INDEX "kanban_boards_user_idx" ON "kanban_boards" ("user_id");
+CREATE INDEX "kanban_columns_board_position_idx" ON "kanban_columns" ("board_id", "position");
+CREATE INDEX "kanban_tasks_board_idx" ON "kanban_tasks" ("board_id");
+CREATE INDEX "kanban_tasks_column_position_idx" ON "kanban_tasks" ("column_id", "position");
+CREATE INDEX "kanban_tasks_calendar_item_idx" ON "kanban_tasks" ("calendar_item_id");

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 
 import { db, kanbanColumns } from "@/db";
-import { getBoardsWithDetails, getDatabaseUser, getUserColumn, normalizeText } from "@/lib/kanban";
+import { getBoardWithDetails, getDatabaseUser, getUserColumn, normalizeText } from "@/lib/kanban";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -51,8 +51,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     .where(eq(kanbanColumns.id, columnId))
     .returning();
 
-  const boards = await getBoardsWithDetails(user.id);
-  return NextResponse.json({ column, board: boards.find((board) => board.id === row.column.boardId) });
+  return NextResponse.json({ column, board: await getBoardWithDetails(row.column.boardId, user.id) });
 }
 
 export async function DELETE(_request: Request, context: RouteContext) {
@@ -75,7 +74,6 @@ export async function DELETE(_request: Request, context: RouteContext) {
   }
 
   const [column] = await db.delete(kanbanColumns).where(eq(kanbanColumns.id, columnId)).returning();
-  const boards = await getBoardsWithDetails(user.id);
 
-  return NextResponse.json({ column, board: boards.find((board) => board.id === row.column.boardId) });
+  return NextResponse.json({ column, board: await getBoardWithDetails(row.column.boardId, user.id) });
 }

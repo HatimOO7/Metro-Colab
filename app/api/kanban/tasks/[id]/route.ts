@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { db, calendarItems, kanbanTasks } from "@/db";
 import {
   allowedKanbanPriorities,
-  getBoardsWithDetails,
+  getBoardWithDetails,
   getDatabaseUser,
   getUserColumn,
   getUserTask,
@@ -118,11 +118,10 @@ export async function PATCH(request: Request, context: RouteContext) {
 
   const [task] = await db.update(kanbanTasks).set(updates).where(eq(kanbanTasks.id, taskId)).returning();
   const syncedTask = await syncTaskToCalendar(task, user.id);
-  const boards = await getBoardsWithDetails(user.id);
 
   return NextResponse.json({
     task: syncedTask,
-    board: boards.find((board) => board.id === row.task.boardId),
+    board: await getBoardWithDetails(row.task.boardId, user.id),
   });
 }
 
@@ -152,7 +151,6 @@ export async function DELETE(_request: Request, context: RouteContext) {
   }
 
   const [task] = await db.delete(kanbanTasks).where(eq(kanbanTasks.id, taskId)).returning();
-  const boards = await getBoardsWithDetails(user.id);
 
-  return NextResponse.json({ task, board: boards.find((board) => board.id === row.task.boardId) });
+  return NextResponse.json({ task, board: await getBoardWithDetails(row.task.boardId, user.id) });
 }

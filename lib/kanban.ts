@@ -95,6 +95,54 @@ export async function getUserTask(taskId: number, userId: number) {
   return row ?? null;
 }
 
+type KanbanBoardRow = typeof kanbanBoards.$inferSelect;
+type KanbanColumnRow = typeof kanbanColumns.$inferSelect;
+type KanbanTaskRow = typeof kanbanTasks.$inferSelect;
+
+function hydrateBoards(boards: KanbanBoardRow[], columns: KanbanColumnRow[], tasks: KanbanTaskRow[]) {
+  const tasksByColumn = new Map<number, KanbanTaskRow[]>();
+
+  for (const task of tasks) {
+    const columnTasks = tasksByColumn.get(task.columnId) ?? [];
+    columnTasks.push(task);
+    tasksByColumn.set(task.columnId, columnTasks);
+  }
+
+  const columnsByBoard = new Map<number, Array<KanbanColumnRow & { tasks: KanbanTaskRow[] }>>();
+
+  for (const column of columns) {
+    const boardColumns = columnsByBoard.get(column.boardId) ?? [];
+    boardColumns.push({ ...column, tasks: tasksByColumn.get(column.id) ?? [] });
+    columnsByBoard.set(column.boardId, boardColumns);
+  }
+
+  return boards.map((board) => ({
+    ...board,
+    columns: columnsByBoard.get(board.id) ?? [],
+  }));
+}
+
+export async function getBoardWithDetails(boardId: number, userId: number) {
+  const board = await getUserBoard(boardId, userId);
+
+  if (!board) {
+    return null;
+  }
+
+  const columns = await db
+    .select()
+    .from(kanbanColumns)
+    .where(eq(kanbanColumns.boardId, boardId))
+    .orderBy(asc(kanbanColumns.position), asc(kanbanColumns.createdAt));
+  const tasks = await db
+    .select()
+    .from(kanbanTasks)
+    .where(eq(kanbanTasks.boardId, boardId))
+    .orderBy(asc(kanbanTasks.columnId), asc(kanbanTasks.position), asc(kanbanTasks.createdAt));
+
+  return hydrateBoards([board], columns, tasks)[0];
+}
+
 export async function getBoardsWithDetails(userId: number) {
   const boards = await db
     .select()
@@ -114,17 +162,11 @@ export async function getBoardsWithDetails(userId: number) {
     .where(eq(kanbanBoards.userId, userId))
     .orderBy(asc(kanbanTasks.position), asc(kanbanTasks.createdAt));
 
-  return boards.map((board) => ({
-    ...board,
-    columns: columns
-      .filter((row) => row.kanban_columns.boardId === board.id)
-      .map((row) => ({
-        ...row.kanban_columns,
-        tasks: tasks
-          .filter((taskRow) => taskRow.kanban_tasks.columnId === row.kanban_columns.id)
-          .map((taskRow) => taskRow.kanban_tasks),
-      })),
-  }));
+  return hydrateBoards(
+    boards,
+    columns.map((row) => row.kanban_columns),
+    tasks.map((row) => row.kanban_tasks)
+  );
 }
 
 export async function syncTaskToCalendar(task: KanbanTask, userId: number) {

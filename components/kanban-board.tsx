@@ -149,9 +149,10 @@ export function KanbanBoardPage() {
     () => boards.find((board) => board.id === selectedBoardId) ?? boards[0] ?? null,
     [boards, selectedBoardId]
   );
-  const sortedSelectedBoard = selectedBoard
-    ? { ...selectedBoard, columns: sortColumns(selectedBoard.columns) }
-    : null;
+  const sortedSelectedBoard = React.useMemo(
+    () => (selectedBoard ? { ...selectedBoard, columns: sortColumns(selectedBoard.columns) } : null),
+    [selectedBoard]
+  );
 
   const replaceBoard = React.useCallback((board: KanbanBoard) => {
     setBoards((currentBoards) => currentBoards.map((currentBoard) => (currentBoard.id === board.id ? board : currentBoard)));
@@ -338,6 +339,11 @@ export function KanbanBoardPage() {
       return;
     }
 
+    if (sourceColumn.id === targetColumn.id) {
+      setDraggingTaskId(null);
+      return;
+    }
+
     const nextColumns = sortedSelectedBoard.columns.map((column) => {
       const remainingTasks = column.tasks.filter((task) => task.id !== draggingTaskId);
       const nextTasks =
@@ -357,21 +363,21 @@ export function KanbanBoardPage() {
     setActionError(null);
 
     try {
-      const updates = nextColumns.flatMap((column) =>
-        column.tasks.map((task) =>
-          fetch(`/api/kanban/tasks/${task.id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ columnId: column.id, position: task.position }),
-          }).then(readPayload)
-        )
-      );
-      const payloads = await Promise.all(updates);
-      const latestBoard = [...payloads].reverse().find((payload) => payload.board)?.board as KanbanBoard | undefined;
-
-      if (latestBoard) {
-        replaceBoard(latestBoard);
-      }
+      const response = await fetch("/api/kanban/tasks/reorder", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          boardId: sortedSelectedBoard.id,
+          columns: nextColumns
+            .filter((column) => column.id === sourceColumn.id || column.id === targetColumn.id)
+            .map((column) => ({
+              columnId: column.id,
+              taskIds: column.tasks.map((task) => task.id),
+            })),
+        }),
+      });
+      const payload = await readPayload(response);
+      replaceBoard(payload.board);
     } catch (moveError) {
       setActionError(moveError instanceof Error ? moveError.message : "Unable to move task.");
       replaceBoard(sortedSelectedBoard);
@@ -519,6 +525,7 @@ export function KanbanBoardPage() {
                       onEditTask={(task) => setTaskDialog({ columnId: column.id, task })}
                       onDeleteTask={(task) => void handleDeleteTask(task)}
                       onDragStart={(task) => setDraggingTaskId(task.id)}
+                      onDragEnd={() => setDraggingTaskId(null)}
                       onDrop={() => void handleTaskDrop(column)}
                       draggingTaskId={draggingTaskId}
                     />
@@ -562,6 +569,7 @@ function KanbanColumnView({
   onEditTask,
   onDeleteTask,
   onDragStart,
+  onDragEnd,
   onDrop,
   draggingTaskId,
 }: {
@@ -572,6 +580,7 @@ function KanbanColumnView({
   onEditTask: (task: KanbanTask) => void;
   onDeleteTask: (task: KanbanTask) => void;
   onDragStart: (task: KanbanTask) => void;
+  onDragEnd: () => void;
   onDrop: () => void;
   draggingTaskId: number | null;
 }) {
@@ -622,6 +631,7 @@ function KanbanColumnView({
             onEdit={() => onEditTask(task)}
             onDelete={() => onDeleteTask(task)}
             onDragStart={() => onDragStart(task)}
+            onDragEnd={onDragEnd}
           />
         ))}
 
@@ -647,11 +657,13 @@ function KanbanTaskCard({
   onEdit,
   onDelete,
   onDragStart,
+  onDragEnd,
 }: {
   task: KanbanTask;
   onEdit: () => void;
   onDelete: () => void;
   onDragStart: () => void;
+  onDragEnd: () => void;
 }) {
   return (
     <div
@@ -662,6 +674,7 @@ function KanbanTaskCard({
         event.dataTransfer.effectAllowed = "move";
         onDragStart();
       }}
+      onDragEnd={onDragEnd}
       onClick={onEdit}
       className="group cursor-pointer rounded-lg border border-border bg-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-soft"
       role="button"

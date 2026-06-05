@@ -4,7 +4,7 @@ import { count, eq } from "drizzle-orm";
 import { db, kanbanTasks } from "@/db";
 import {
   allowedKanbanPriorities,
-  getBoardsWithDetails,
+  getBoardWithDetails,
   getDatabaseUser,
   getTodayKey,
   getUserBoard,
@@ -73,10 +73,6 @@ export async function POST(request: Request) {
     .returning();
 
   const syncedTask = await syncTaskToCalendar(task, user.id);
-  const boards = await getBoardsWithDetails(user.id);
 
-  return NextResponse.json(
-    { task: syncedTask, board: boards.find((currentBoard) => currentBoard.id === boardId) },
-    { status: 201 }
-  );
+  return NextResponse.json({ task: syncedTask, board: await getBoardWithDetails(boardId, user.id) }, { status: 201 });
 }

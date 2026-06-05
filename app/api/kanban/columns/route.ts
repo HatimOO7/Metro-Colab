@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { count, eq } from "drizzle-orm";
 
 import { db, kanbanColumns } from "@/db";
-import { getBoardsWithDetails, getDatabaseUser, getUserBoard, maxKanbanColumns, normalizeText } from "@/lib/kanban";
+import { getBoardWithDetails, getDatabaseUser, getUserBoard, maxKanbanColumns, normalizeText } from "@/lib/kanban";
 
 export async function POST(request: Request) {
   const user = await getDatabaseUser();
@@ -51,9 +51,5 @@ export async function POST(request: Request) {
     })
     .returning();
 
-  const boards = await getBoardsWithDetails(user.id);
-  return NextResponse.json(
-    { column, board: boards.find((currentBoard) => currentBoard.id === boardId) },
-    { status: 201 }
-  );
+  return NextResponse.json({ column, board: await getBoardWithDetails(boardId, user.id) }, { status: 201 });
 }

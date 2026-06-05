@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 
 import { db, kanbanColumns, kanbanBoards } from "@/db";
-import { getBoardsWithDetails, getDatabaseUser, getUserBoard } from "@/lib/kanban";
+import { getBoardWithDetails, getDatabaseUser, getUserBoard } from "@/lib/kanban";
 
 export async function PATCH(request: Request) {
   const user = await getDatabaseUser();
@@ -48,6 +48,5 @@ export async function PATCH(request: Request) {
     )
   );
 
-  const boards = await getBoardsWithDetails(user.id);
-  return NextResponse.json({ board: boards.find((currentBoard) => currentBoard.id === boardId) });
+  return NextResponse.json({ board: await getBoardWithDetails(boardId, user.id) });
 }
