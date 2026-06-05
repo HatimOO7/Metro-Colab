@@ -29,6 +29,7 @@ import {
 import * as React from "react";
 
 import { Button } from "@/components/ui/button";
+import { KanbanBoardPage } from "@/components/kanban-board";
 import { cn } from "@/lib/utils";
 
 type MenuItem = {
@@ -325,6 +326,7 @@ export function AppShell() {
   const [collapsed, setCollapsed] = React.useState(false);
   const [activeItem, setActiveItem] = React.useState("Dashboard");
   const isCalendar = activeItem === "Calendar";
+  const isKanban = activeItem === "Task / Kanban";
 
   return (
     <main className="min-h-screen bg-background text-foreground">
@@ -418,23 +420,30 @@ export function AppShell() {
         </aside>
 
         <section className="flex min-w-0 flex-1 flex-col">
-          <AppHeader isCalendar={isCalendar} />
-          {isCalendar ? <CalendarPlanner /> : <DashboardContent />}
+          <AppHeader activeItem={activeItem} />
+          {isCalendar ? <CalendarPlanner /> : isKanban ? <KanbanBoardPage /> : <DashboardContent />}
         </section>
       </div>
     </main>
   );
 }
 
-function AppHeader({ isCalendar }: { isCalendar: boolean }) {
+function AppHeader({ activeItem }: { activeItem: string }) {
+  const isCalendar = activeItem === "Calendar";
+  const isKanban = activeItem === "Task / Kanban";
+
   return (
     <header className="flex flex-col gap-3 border-b border-border bg-background/85 px-4 py-4 backdrop-blur md:flex-row md:items-center md:justify-between lg:px-6">
       <div>
         <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
-          {isCalendar ? "Calendar Studio" : "Productivity Hub"}
+          {isCalendar ? "Calendar Studio" : isKanban ? "Task Board" : "Productivity Hub"}
         </p>
         <h1 className="mt-1 text-2xl font-semibold tracking-normal text-foreground md:text-3xl">
-          {isCalendar ? "Shape the month, one task at a time." : "Build the week with clarity."}
+          {isCalendar
+            ? "Shape the month, one task at a time."
+            : isKanban
+              ? "Move work from idea to done."
+              : "Build the week with clarity."}
         </h1>
       </div>
       <div className="flex flex-wrap items-center gap-2">
