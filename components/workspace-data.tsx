@@ -268,6 +268,8 @@ export function WorkspaceDataProvider({
           patchKanbanTask(payload.linkedKanbanTask.id, payload.linkedKanbanTask);
         }
 
+        void reloadKanbanBoards({ silent: true });
+
         return item;
       } catch (updateError) {
         if (previousItems) {
@@ -277,7 +279,7 @@ export function WorkspaceDataProvider({
         throw updateError;
       }
     },
-    [patchKanbanTask]
+    [patchKanbanTask, reloadKanbanBoards]
   );
 
   const deleteCalendarItem = React.useCallback(async (id: number) => {
