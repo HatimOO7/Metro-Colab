@@ -147,3 +147,11 @@
   --color-primary-gradient: var(--primary-gradient);
   --shadow-soft: 0 10px 30px hsl(224 26% 15% / 0.08);
 }
+
+/* Liveblocks overrides for Shadcn Sheet (z-50) */
+.lb-root {
+  --lb-z-index: 9999;
+}
+.lb-popover, .lb-tooltip, .lb-emoji-picker, [data-radix-popper-content-wrapper], [data-radix-popper-content] {
+  z-index: 9999 !important;
+}

@@ -657,7 +657,20 @@ export function KanbanBoardPage() {
   }, []);
 
   return (
-    <LiveblocksProvider authEndpoint="/api/liveblocks-auth">
+    <LiveblocksProvider 
+      authEndpoint="/api/liveblocks-auth"
+      resolveUsers={async ({ userIds }) => {
+        try {
+          const searchParams = new URLSearchParams();
+          userIds.forEach((id) => searchParams.append("userIds", id));
+          const response = await fetch(`/api/liveblocks-users?${searchParams}`);
+          if (!response.ok) return [];
+          return response.json();
+        } catch (error) {
+          return [];
+        }
+      }}
+    >
     <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 px-4 py-5 lg:px-6">
       {(error || actionError) && (
         <div className="rounded-lg border border-destructive/25 bg-red-50 px-3 py-2 text-sm text-destructive">
@@ -1463,10 +1476,11 @@ function TaskComments({ taskId }: { taskId: number }) {
       
       <div className="bg-white border border-border rounded-xl shadow-sm overflow-hidden shrink-0 transition-shadow focus-within:ring-2 focus-within:ring-emerald-500/20 focus-within:border-emerald-500">
         <Composer
-          onComposerSubmit={({ body }, event) => {
+          onComposerSubmit={({ body, attachments }, event) => {
             event.preventDefault();
             createThread({
               body,
+              attachments,
               metadata: { taskId: String(taskId) }
             });
           }}
