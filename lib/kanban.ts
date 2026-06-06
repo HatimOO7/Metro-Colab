@@ -1,6 +1,6 @@
 import { and, asc, eq, or, sql } from "drizzle-orm";
 
-import { calendarItems, db, kanbanBoards, kanbanColumns, kanbanTasks, type KanbanLabel, type KanbanTask } from "@/db";
+import { calendarItems, db, kanbanBoards, kanbanColumns, kanbanTasks, users, type KanbanLabel, type KanbanTask } from "@/db";
 import { normalizeCalendarDateKey } from "@/lib/calendar-items";
 import { syncCurrentUserToDatabase } from "@/lib/sync-user";
 
@@ -125,8 +125,11 @@ function hydrateBoards(boards: KanbanBoardRow[], columns: KanbanColumnRow[], tas
   }));
 }
 
+type KanbanBoardClient = KanbanBoardRow & { ownerEmail?: string };
+
 type JoinRow = {
   board: KanbanBoardRow;
+  ownerEmail?: string | null;
   column: KanbanColumnRow | null;
   task: KanbanTaskRow | null;
 };
@@ -136,12 +139,12 @@ function hydrateFromJoinRows(rows: JoinRow[]) {
     return [];
   }
 
-  const boardsMap = new Map<number, KanbanBoardRow>();
+  const boardsMap = new Map<number, KanbanBoardClient>();
   const columnsMap = new Map<number, KanbanColumnRow>();
   const tasksMap = new Map<number, KanbanTaskRow>();
 
   for (const row of rows) {
-    boardsMap.set(row.board.id, row.board);
+    boardsMap.set(row.board.id, { ...row.board, ownerEmail: row.ownerEmail ?? undefined });
 
     if (row.column) {
       columnsMap.set(row.column.id, row.column);
@@ -172,10 +175,12 @@ export async function getBoardWithDetails(boardId: number, userId: number) {
   const rows = await db
     .select({
       board: kanbanBoards,
+      ownerEmail: users.email,
       column: kanbanColumns,
       task: kanbanTasks,
     })
     .from(kanbanBoards)
+    .innerJoin(users, eq(kanbanBoards.userId, users.id))
     .leftJoin(kanbanColumns, eq(kanbanColumns.boardId, kanbanBoards.id))
     .leftJoin(kanbanTasks, eq(kanbanTasks.boardId, kanbanBoards.id))
     .where(and(eq(kanbanBoards.id, boardId), eq(kanbanBoards.userId, userId)))
@@ -205,10 +210,12 @@ export async function getBoardsWithDetails(userId: number, email?: string) {
   const rows = await db
     .select({
       board: kanbanBoards,
+      ownerEmail: users.email,
       column: kanbanColumns,
       task: kanbanTasks,
     })
     .from(kanbanBoards)
+    .innerJoin(users, eq(kanbanBoards.userId, users.id))
     .leftJoin(kanbanColumns, eq(kanbanColumns.boardId, kanbanBoards.id))
     .leftJoin(kanbanTasks, eq(kanbanTasks.boardId, kanbanBoards.id))
     .where(whereClause)

@@ -47,6 +47,8 @@ export type KanbanBoard = {
   color: string;
   columns: KanbanColumn[];
   sharedEmails?: string[];
+  pendingEmails?: string[];
+  ownerEmail?: string;
 };
 
 export type KanbanSearchResult = {
@@ -94,6 +96,10 @@ type WorkspaceDataContextValue = {
   setKanbanBoards: React.Dispatch<React.SetStateAction<KanbanBoard[]>>;
   patchKanbanTask: (taskId: number, patch: Partial<KanbanTask>) => void;
   reloadKanbanBoards: (options?: { silent?: boolean }) => Promise<void>;
+  pendingInvitations: KanbanBoard[];
+  acceptInvitation: (boardId: number) => Promise<void>;
+  rejectInvitation: (boardId: number) => Promise<void>;
+  reloadInvitations: () => Promise<void>;
 };
 
 const WorkspaceDataContext = React.createContext<WorkspaceDataContextValue | null>(null);
@@ -133,6 +139,9 @@ export function WorkspaceDataProvider({
   const [kanbanLoading, setKanbanLoading] = React.useState(false);
   const [kanbanReady, setKanbanReady] = React.useState(false);
   const [kanbanError, setKanbanError] = React.useState<string | null>(null);
+  
+  const [pendingInvitations, setPendingInvitations] = React.useState<KanbanBoard[]>([]);
+
   const calendarReadyRef = React.useRef(false);
   const kanbanReadyRef = React.useRef(false);
 
@@ -180,10 +189,32 @@ export function WorkspaceDataProvider({
     }
   }, []);
 
+  const reloadInvitations = React.useCallback(async () => {
+    try {
+      const response = await fetch("/api/kanban/invitations", { cache: "no-store" });
+      const payload = await readJson(response);
+      setPendingInvitations(payload.boards ?? []);
+    } catch (error) {
+      console.error("Failed to load invitations", error);
+    }
+  }, []);
+
+  const acceptInvitation = React.useCallback(async (boardId: number) => {
+    await fetch(`/api/kanban/invitations/${boardId}/accept`, { method: "POST" });
+    await reloadInvitations();
+    await reloadKanbanBoards();
+  }, [reloadInvitations, reloadKanbanBoards]);
+
+  const rejectInvitation = React.useCallback(async (boardId: number) => {
+    await fetch(`/api/kanban/invitations/${boardId}/reject`, { method: "POST" });
+    await reloadInvitations();
+  }, [reloadInvitations]);
+
   React.useEffect(() => {
     void reloadCalendarItems();
     void reloadKanbanBoards();
-  }, [reloadCalendarItems, reloadKanbanBoards]);
+    void reloadInvitations();
+  }, [reloadCalendarItems, reloadKanbanBoards, reloadInvitations]);
 
   const createCalendarItem = React.useCallback(async (input: Omit<CalendarItem, "id">) => {
     const response = await fetch("/api/calendar-items", {
@@ -351,6 +382,10 @@ export function WorkspaceDataProvider({
       setKanbanBoards,
       patchKanbanTask,
       reloadKanbanBoards,
+      pendingInvitations,
+      acceptInvitation,
+      rejectInvitation,
+      reloadInvitations,
     }),
     [
       searchQuery,
@@ -377,8 +412,13 @@ export function WorkspaceDataProvider({
       kanbanLoading,
       kanbanReady,
       kanbanError,
+      setKanbanBoards,
       patchKanbanTask,
       reloadKanbanBoards,
+      pendingInvitations,
+      acceptInvitation,
+      rejectInvitation,
+      reloadInvitations,
     ]
   );
 

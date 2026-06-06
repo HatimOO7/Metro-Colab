@@ -47,17 +47,18 @@ export async function POST(request: Request, props: { params: Promise<{ id: stri
     }
 
     const sharedEmails = board.sharedEmails ?? [];
+    const pendingEmails = board.pendingEmails ?? [];
     
-    if (sharedEmails.includes(email)) {
-      return NextResponse.json({ board }, { status: 200 }); // Already shared
+    if (sharedEmails.includes(email) || pendingEmails.includes(email)) {
+      return NextResponse.json({ board }, { status: 200 }); // Already shared or pending
     }
 
-    const nextSharedEmails = [...sharedEmails, email];
+    const nextPendingEmails = [...pendingEmails, email];
 
     const [updatedBoard] = await db
       .update(kanbanBoards)
       .set({
-        sharedEmails: nextSharedEmails,
+        pendingEmails: nextPendingEmails,
         updatedAt: new Date(),
       })
       .where(eq(kanbanBoards.id, boardId))
@@ -110,17 +111,20 @@ export async function DELETE(request: Request, props: { params: Promise<{ id: st
       return NextResponse.json({ error: "Board not found" }, { status: 404 });
     }
 
-    if (board.userId !== dbUser.id) {
-      return NextResponse.json({ error: "Only the board owner can modify sharing" }, { status: 403 });
+    if (board.userId !== dbUser.id && dbUser.email !== email) {
+      return NextResponse.json({ error: "Only the board owner can modify sharing, or a user can remove themselves" }, { status: 403 });
     }
 
     const sharedEmails = board.sharedEmails ?? [];
+    const pendingEmails = board.pendingEmails ?? [];
     const nextSharedEmails = sharedEmails.filter((e) => e !== email);
+    const nextPendingEmails = pendingEmails.filter((e) => e !== email);
 
     const [updatedBoard] = await db
       .update(kanbanBoards)
       .set({
         sharedEmails: nextSharedEmails,
+        pendingEmails: nextPendingEmails,
         updatedAt: new Date(),
       })
       .where(eq(kanbanBoards.id, boardId))

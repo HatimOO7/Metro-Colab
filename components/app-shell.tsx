@@ -510,9 +510,54 @@ function AppHeader({ activeItem, onNewSpace }: { activeItem: string; onNewSpace:
 }
 
 function DashboardContent() {
+  const { pendingInvitations, acceptInvitation, rejectInvitation } = useWorkspaceData();
+
   return (
     <div className="grid gap-4 px-4 py-5 lg:grid-cols-[1.5fr_1fr] lg:px-6">
       <section className="space-y-4">
+        {pendingInvitations.length > 0 && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 shadow-soft">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold text-amber-900">Pending Invitations</p>
+                <p className="mt-1 text-xs text-amber-700">
+                  You have been invited to collaborate on these boards.
+                </p>
+              </div>
+            </div>
+            <div className="mt-4 space-y-3">
+              {pendingInvitations.map((board) => (
+                <div key={board.id} className="flex items-center justify-between rounded-lg border border-amber-200 bg-white p-3 shadow-sm">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="h-4 w-4 shrink-0 rounded-full" style={{ backgroundColor: board.color }} />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-foreground">{board.name}</p>
+                      <p className="truncate text-[10px] text-muted-foreground">Invited by {board.ownerEmail || "Owner"}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-8 rounded-md bg-white text-xs hover:bg-red-50 hover:text-destructive hover:border-red-200"
+                      onClick={() => void rejectInvitation(board.id)}
+                    >
+                      Decline
+                    </Button>
+                    <Button
+                      type="button"
+                      className="h-8 rounded-md bg-emerald-600 text-xs text-white hover:bg-emerald-700"
+                      onClick={() => void acceptInvitation(board.id)}
+                    >
+                      Accept
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="rounded-lg border border-border bg-card p-4 shadow-soft">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>

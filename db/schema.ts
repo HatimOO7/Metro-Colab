@@ -50,6 +50,7 @@ export const kanbanBoards = pgTable(
     name: text("name").notNull(),
     color: text("color").notNull(),
     sharedEmails: jsonb("shared_emails").$type<string[]>().notNull().default([]),
+    pendingEmails: jsonb("pending_emails").$type<string[]>().notNull().default([]),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

@@ -1,5 +1,7 @@
 "use client";
 
+import { useUser } from "@clerk/nextjs";
+
 import {
   CalendarDays,
   Check,
@@ -1483,7 +1485,12 @@ function ShareBoardDialog({
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
+  const { user } = useUser();
+  const currentUserEmail = user?.primaryEmailAddress?.emailAddress;
+  const isOwner = currentUserEmail === board.ownerEmail;
+
   const sharedEmails = board.sharedEmails ?? [];
+  const pendingEmails = board.pendingEmails ?? [];
 
   async function handleShare(event: React.FormEvent) {
     event.preventDefault();
@@ -1492,6 +1499,10 @@ function ShareBoardDialog({
     if (!cleanEmail) return;
     if (sharedEmails.includes(cleanEmail)) {
       setError("This email is already shared with this board.");
+      return;
+    }
+    if (pendingEmails.includes(cleanEmail)) {
+      setError("This email is already invited.");
       return;
     }
 
@@ -1563,31 +1574,30 @@ function ShareBoardDialog({
             <Button
               type="submit"
               className="h-9 rounded-lg bg-emerald-600 text-xs text-white hover:bg-emerald-700"
-              disabled={saving || !email.trim()}
+              disabled={saving || !email.trim() || !isOwner}
             >
               {saving ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : null}
               Invite
             </Button>
           </form>
           {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
+          {!isOwner && <p className="mt-2 text-xs text-muted-foreground">Only the board owner can invite others.</p>}
 
-          <div className="mt-6">
-            <p className="text-xs font-semibold text-muted-foreground mb-2">People with access</p>
-            <div className="space-y-2 max-h-48 overflow-y-auto">
-              <div className="flex items-center justify-between rounded-lg border border-border bg-muted/40 px-3 py-2">
-                <div className="flex items-center gap-2">
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-foreground text-[10px] font-semibold text-background">
-                    O
+          <div className="mt-6 space-y-4 max-h-48 overflow-y-auto">
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground mb-2">People with access</p>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between rounded-lg border border-border bg-muted/40 px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-foreground text-[10px] font-semibold text-background">
+                      {board.ownerEmail ? board.ownerEmail.charAt(0).toUpperCase() : "O"}
+                    </div>
+                    <span className="text-sm font-medium">{board.ownerEmail || "Owner"}</span>
                   </div>
-                  <span className="text-sm font-medium">Owner</span>
+                  <span className="text-[10px] uppercase text-muted-foreground font-semibold tracking-wider">Owner</span>
                 </div>
-                <span className="text-[10px] uppercase text-muted-foreground font-semibold tracking-wider">Owner</span>
-              </div>
-              
-              {sharedEmails.length === 0 ? (
-                <p className="text-xs text-muted-foreground py-2 text-center">Not shared with anyone yet.</p>
-              ) : (
-                sharedEmails.map((sharedEmail: string) => (
+                
+                {sharedEmails.map((sharedEmail: string) => (
                   <div key={sharedEmail} className="flex items-center justify-between rounded-lg border border-border bg-white px-3 py-2">
                     <div className="flex items-center gap-2">
                       <div className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-[10px] font-semibold text-blue-700">
@@ -1595,17 +1605,46 @@ function ShareBoardDialog({
                       </div>
                       <span className="text-sm truncate max-w-[200px]" title={sharedEmail}>{sharedEmail}</span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => void handleRemoveShare(sharedEmail)}
-                      className="text-xs text-destructive hover:underline"
-                    >
-                      Remove
-                    </button>
+                    {(isOwner || sharedEmail === currentUserEmail) && (
+                      <button
+                        type="button"
+                        onClick={() => void handleRemoveShare(sharedEmail)}
+                        className="text-xs text-destructive hover:underline"
+                      >
+                        {isOwner ? "Remove" : "Leave Board"}
+                      </button>
+                    )}
                   </div>
-                ))
-              )}
+                ))}
+              </div>
             </div>
+
+            {pendingEmails.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground mb-2">Pending invites</p>
+                <div className="space-y-2">
+                  {pendingEmails.map((pendingEmail: string) => (
+                    <div key={pendingEmail} className="flex items-center justify-between rounded-lg border border-border bg-muted/10 px-3 py-2 opacity-75">
+                      <div className="flex items-center gap-2">
+                        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-100 text-[10px] font-semibold text-amber-700">
+                          {pendingEmail.charAt(0).toUpperCase()}
+                        </div>
+                        <span className="text-sm truncate max-w-[200px]" title={pendingEmail}>{pendingEmail}</span>
+                      </div>
+                      {isOwner && (
+                        <button
+                          type="button"
+                          onClick={() => void handleRemoveShare(pendingEmail)}
+                          className="text-xs text-destructive hover:underline"
+                        >
+                          Revoke
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
