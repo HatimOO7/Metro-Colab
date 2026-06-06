@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 
 import { db, calendarItems } from "@/db";
+import { mapApiCalendarItem, normalizeCalendarDateKey } from "@/lib/calendar-items";
+import { syncCalendarDateToKanbanTask } from "@/lib/kanban";
 import { syncCurrentUserToDatabase } from "@/lib/sync-user";
 
 const allowedTypes = new Set(["task", "reminder"]);
@@ -92,7 +94,7 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 
   if ("scheduledDate" in record) {
-    updates.scheduledDate = normalizeOptionalText(record.scheduledDate);
+    updates.scheduledDate = normalizeCalendarDateKey(normalizeOptionalText(record.scheduledDate));
   }
 
   if ("scheduledTime" in record) {
@@ -124,7 +126,19 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Calendar item not found" }, { status: 404 });
   }
 
-  return NextResponse.json({ item });
+  let linkedKanbanTask = null;
+
+  if ("scheduledDate" in record) {
+    linkedKanbanTask = await syncCalendarDateToKanbanTask(item.id, item.scheduledDate, user.id);
+  }
+
+  const mappedItem = mapApiCalendarItem(item);
+
+  if (!mappedItem) {
+    return NextResponse.json({ error: "Failed to serialize calendar item" }, { status: 500 });
+  }
+
+  return NextResponse.json({ item: mappedItem, linkedKanbanTask });
 }
 
 export async function DELETE(_request: Request, context: RouteContext) {

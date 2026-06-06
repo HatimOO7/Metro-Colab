@@ -1,8 +1,8 @@
-import { after } from "next/server";
 import { NextResponse } from "next/server";
 import { count, eq } from "drizzle-orm";
 
 import { db, kanbanTasks } from "@/db";
+import { mapApiCalendarItem } from "@/lib/calendar-items";
 import {
   allowedKanbanPriorities,
   getBoardWithDetails,
@@ -73,13 +73,14 @@ export async function POST(request: Request) {
     })
     .returning();
 
-  after(async () => {
-    try {
-      await syncTaskToCalendar(task, user.id);
-    } catch (syncError) {
-      console.error("Kanban calendar sync failed after task create", syncError);
-    }
-  });
+  const syncResult = await syncTaskToCalendar(task, user.id);
 
-  return NextResponse.json({ task, board: await getBoardWithDetails(boardId, user.id) }, { status: 201 });
+  return NextResponse.json(
+    {
+      task: syncResult.task,
+      calendarItem: mapApiCalendarItem(syncResult.calendarItem),
+      board: await getBoardWithDetails(boardId, user.id),
+    },
+    { status: 201 }
+  );
 }

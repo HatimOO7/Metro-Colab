@@ -30,24 +30,21 @@ import * as React from "react";
 
 import { Button } from "@/components/ui/button";
 import { KanbanBoardPage } from "@/components/kanban-board";
+import {
+  collectKanbanSearchResults,
+  filterCalendarItems,
+  isRenderableScheduledItem,
+  normalizeCalendarDateKey,
+  useWorkspaceData,
+  WorkspaceDataProvider,
+  type CalendarItem,
+} from "@/components/workspace-data";
 import { cn } from "@/lib/utils";
 
 type MenuItem = {
   label: string;
   icon: React.ElementType;
   color: string;
-};
-
-type CalendarItem = {
-  id: number;
-  title: string;
-  description: string | null;
-  itemType: "task" | "reminder";
-  category: string;
-  categoryColor: string;
-  scheduledDate: string | null;
-  scheduledTime: string | null;
-  status: "scheduled" | "draft";
 };
 
 type CalendarForm = {
@@ -227,106 +224,35 @@ function getCategory(name: string) {
   return categories.find((category) => category.name === name) ?? categories[0];
 }
 
-function useCalendarItems() {
-  const [items, setItems] = React.useState<CalendarItem[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+export function AppShell() {
+  const [activeItem, setActiveItem] = React.useState("Dashboard");
 
-  const loadItems = React.useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const response = await fetch("/api/calendar-items", { cache: "no-store" });
-      const payload = await response.json();
-
-      if (!response.ok) {
-        throw new Error(payload.error ?? "Unable to load calendar items");
-      }
-
-      setItems(payload.items ?? []);
-    } catch (fetchError) {
-      setError(fetchError instanceof Error ? fetchError.message : "Unable to load calendar items");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  React.useEffect(() => {
-    void loadItems();
-  }, [loadItems]);
-
-  const createItem = React.useCallback(async (input: Omit<CalendarItem, "id">) => {
-    const response = await fetch("/api/calendar-items", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-    });
-    const payload = await response.json();
-
-    if (!response.ok) {
-      throw new Error(payload.error ?? "Unable to create calendar item");
-    }
-
-    setItems((currentItems) => [...currentItems, payload.item]);
-    return payload.item as CalendarItem;
-  }, []);
-
-  const updateItem = React.useCallback(
-    async (id: number, input: Partial<CalendarItem>, options?: { optimistic?: boolean }) => {
-      let previousItems: CalendarItem[] | null = null;
-
-      if (options?.optimistic) {
-        setItems((currentItems) => {
-          previousItems = currentItems;
-          return currentItems.map((item) => (item.id === id ? { ...item, ...input } : item));
-        });
-      }
-
-      try {
-        const response = await fetch(`/api/calendar-items/${id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(input),
-        });
-        const payload = await response.json();
-
-        if (!response.ok) {
-          throw new Error(payload.error ?? "Unable to update calendar item");
-        }
-
-        setItems((currentItems) => currentItems.map((item) => (item.id === id ? payload.item : item)));
-        return payload.item as CalendarItem;
-      } catch (updateError) {
-        if (previousItems) {
-          setItems(previousItems);
-        }
-
-        throw updateError;
-      }
-    },
-    []
+  return (
+    <WorkspaceDataProvider
+      onNavigateToKanban={() => setActiveItem("Task / Kanban")}
+      onNavigateToCalendar={() => setActiveItem("Calendar")}
+    >
+      <AppShellContent activeItem={activeItem} setActiveItem={setActiveItem} />
+    </WorkspaceDataProvider>
   );
-
-  const deleteItem = React.useCallback(async (id: number) => {
-    const response = await fetch(`/api/calendar-items/${id}`, { method: "DELETE" });
-    const payload = await response.json();
-
-    if (!response.ok) {
-      throw new Error(payload.error ?? "Unable to delete calendar item");
-    }
-
-    setItems((currentItems) => currentItems.filter((item) => item.id !== id));
-  }, []);
-
-  return { items, loading, error, createItem, updateItem, deleteItem, reload: loadItems };
 }
 
-export function AppShell() {
+function AppShellContent({
+  activeItem,
+  setActiveItem,
+}: {
+  activeItem: string;
+  setActiveItem: React.Dispatch<React.SetStateAction<string>>;
+}) {
   const [collapsed, setCollapsed] = React.useState(false);
-  const [activeItem, setActiveItem] = React.useState("Dashboard");
+  const { requestCreateBoard } = useWorkspaceData();
   const isCalendar = activeItem === "Calendar";
   const isKanban = activeItem === "Task / Kanban";
+
+  const handleNewSpace = () => {
+    setActiveItem("Task / Kanban");
+    requestCreateBoard();
+  };
 
   return (
     <main className="min-h-screen bg-background text-foreground">
@@ -420,7 +346,7 @@ export function AppShell() {
         </aside>
 
         <section className="flex min-w-0 flex-1 flex-col">
-          <AppHeader activeItem={activeItem} />
+          <AppHeader activeItem={activeItem} onNewSpace={handleNewSpace} />
           {isCalendar ? <CalendarPlanner /> : isKanban ? <KanbanBoardPage /> : <DashboardContent />}
         </section>
       </div>
@@ -428,9 +354,41 @@ export function AppShell() {
   );
 }
 
-function AppHeader({ activeItem }: { activeItem: string }) {
+function AppHeader({ activeItem, onNewSpace }: { activeItem: string; onNewSpace: () => void }) {
   const isCalendar = activeItem === "Calendar";
   const isKanban = activeItem === "Task / Kanban";
+  const {
+    searchQuery,
+    setSearchQuery,
+    kanbanBoards,
+    calendarItems,
+    requestKanbanTaskEdit,
+    requestCalendarItemEdit,
+  } = useWorkspaceData();
+  const [searchFocused, setSearchFocused] = React.useState(false);
+  const searchContainerRef = React.useRef<HTMLDivElement>(null);
+
+  const kanbanResults = React.useMemo(
+    () => collectKanbanSearchResults(kanbanBoards, searchQuery),
+    [kanbanBoards, searchQuery]
+  );
+  const calendarResults = React.useMemo(
+    () => filterCalendarItems(calendarItems, searchQuery),
+    [calendarItems, searchQuery]
+  );
+  const showSearchResults =
+    searchQuery.trim().length > 0 && (searchFocused || kanbanResults.length > 0 || calendarResults.length > 0);
+
+  React.useEffect(() => {
+    function handlePointerDown(event: MouseEvent) {
+      if (!searchContainerRef.current?.contains(event.target as Node)) {
+        setSearchFocused(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, []);
 
   return (
     <header className="flex flex-col gap-3 border-b border-border bg-background/85 px-4 py-4 backdrop-blur md:flex-row md:items-center md:justify-between lg:px-6">
@@ -447,11 +405,102 @@ function AppHeader({ activeItem }: { activeItem: string }) {
         </h1>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex h-9 min-w-[190px] items-center gap-2 rounded-lg border border-border bg-white px-3 text-xs text-muted-foreground shadow-soft">
-          <Search className="h-4 w-4 text-sky-600" aria-hidden="true" />
-          Search pages, boards, tasks
+        <div ref={searchContainerRef} className="relative min-w-[190px] flex-1 sm:flex-none">
+          <label className="flex h-9 items-center gap-2 rounded-lg border border-border bg-white px-3 text-xs text-muted-foreground shadow-soft">
+            <Search className="h-4 w-4 shrink-0 text-sky-600" aria-hidden="true" />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              onFocus={() => setSearchFocused(true)}
+              placeholder="Search pages, boards, tasks"
+              className="min-w-0 flex-1 bg-transparent text-foreground outline-none placeholder:text-muted-foreground"
+              aria-label="Search pages, boards, tasks"
+              aria-expanded={showSearchResults}
+              aria-controls="workspace-search-results"
+            />
+          </label>
+
+          {showSearchResults && (
+            <div
+              id="workspace-search-results"
+              className="absolute right-0 top-[calc(100%+0.5rem)] z-40 max-h-80 w-[min(100vw-2rem,360px)] overflow-y-auto rounded-lg border border-border bg-white p-2 shadow-soft"
+            >
+              {kanbanResults.length === 0 && calendarResults.length === 0 ? (
+                <p className="px-2 py-3 text-xs text-muted-foreground">No matching boards, tasks, or calendar items.</p>
+              ) : (
+                <div className="space-y-3">
+                  {kanbanResults.length > 0 && (
+                    <div>
+                      <p className="px-2 pb-1 text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+                        Kanban tasks
+                      </p>
+                      <div className="space-y-1">
+                        {kanbanResults.map(({ board, column, task }) => (
+                          <button
+                            key={`kanban-${task.id}`}
+                            type="button"
+                            onClick={() => {
+                              requestKanbanTaskEdit({
+                                boardId: board.id,
+                                columnId: column.id,
+                                taskId: task.id,
+                              });
+                              setSearchFocused(false);
+                            }}
+                            className="flex w-full min-w-0 items-start gap-2 rounded-lg px-2 py-2 text-left transition hover:bg-emerald-50"
+                          >
+                            <ClipboardCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" aria-hidden="true" />
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-xs font-semibold text-foreground">{task.title}</span>
+                              <span className="block truncate text-[10px] text-muted-foreground">
+                                {board.name} · {column.name}
+                              </span>
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {calendarResults.length > 0 && (
+                    <div>
+                      <p className="px-2 pb-1 text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+                        Calendar items
+                      </p>
+                      <div className="space-y-1">
+                        {calendarResults.map((item) => (
+                          <button
+                            key={`calendar-${item.id}`}
+                            type="button"
+                            onClick={() => {
+                              requestCalendarItemEdit(item.id);
+                              setSearchFocused(false);
+                            }}
+                            className="flex w-full min-w-0 items-start gap-2 rounded-lg px-2 py-2 text-left transition hover:bg-sky-50"
+                          >
+                            <CalendarDays className="mt-0.5 h-3.5 w-3.5 shrink-0 text-sky-600" aria-hidden="true" />
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-xs font-semibold text-foreground">{item.title}</span>
+                              <span className="block truncate text-[10px] text-muted-foreground">
+                                {item.scheduledDate ? formatDateLabel(item.scheduledDate) : "Draft"} · {item.category}
+                              </span>
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
-        <Button className="h-9 rounded-lg bg-foreground text-xs text-background hover:bg-foreground/90">
+        <Button
+          type="button"
+          className="h-9 rounded-lg bg-foreground text-xs text-background hover:bg-foreground/90"
+          onClick={onNewSpace}
+        >
           <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
           New space
         </Button>
@@ -595,19 +644,40 @@ function CalendarPlanner() {
   const [formError, setFormError] = React.useState<string | null>(null);
   const [actionError, setActionError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
-  const { items, loading, error, createItem, updateItem, deleteItem, reload } = useCalendarItems();
+  const {
+    searchQuery,
+    calendarItems,
+    calendarLoading,
+    calendarReady,
+    calendarError,
+    createCalendarItem,
+    updateCalendarItem,
+    deleteCalendarItem,
+    reloadCalendarItems,
+    pendingCalendarItemEdit,
+    clearCalendarItemEditRequest,
+  } = useWorkspaceData();
+
+  const filteredItems = React.useMemo(
+    () => filterCalendarItems(calendarItems, searchQuery),
+    [calendarItems, searchQuery]
+  );
+  const loading = calendarLoading && !calendarReady;
+  const error = calendarError;
 
   const visibleDates = view === "month" ? getMonthDates(anchorDate) : getWeekDates(anchorDate);
-  const scheduledItems = items.filter((item) => item.status === "scheduled" && item.scheduledDate);
-  const draftItems = items.filter((item) => item.status === "draft");
+  const scheduledItems = filteredItems.filter((item) => isRenderableScheduledItem(item));
+  const draftItems = filteredItems.filter((item) => item.status === "draft");
 
   const itemsByDate = React.useMemo(() => {
     return scheduledItems.reduce<Record<string, CalendarItem[]>>((accumulator, item) => {
-      if (!item.scheduledDate) {
+      const dateKey = normalizeCalendarDateKey(item.scheduledDate);
+
+      if (!dateKey) {
         return accumulator;
       }
 
-      accumulator[item.scheduledDate] = [...(accumulator[item.scheduledDate] ?? []), item];
+      accumulator[dateKey] = [...(accumulator[dateKey] ?? []), { ...item, scheduledDate: dateKey }];
       return accumulator;
     }, {});
   }, [scheduledItems]);
@@ -627,6 +697,21 @@ function CalendarPlanner() {
     setActionError(null);
     setDialogOpen(true);
   }
+
+  React.useEffect(() => {
+    if (!pendingCalendarItemEdit || !calendarReady) {
+      return;
+    }
+
+    const item = calendarItems.find((currentItem) => currentItem.id === pendingCalendarItemEdit);
+
+    if (!item) {
+      return;
+    }
+
+    openEditDialog(item);
+    clearCalendarItemEditRequest();
+  }, [calendarItems, calendarReady, clearCalendarItemEditRequest, pendingCalendarItemEdit]);
 
   function handleNavigate(direction: -1 | 1) {
     setAnchorDate((currentDate) => {
@@ -668,9 +753,9 @@ function CalendarPlanner() {
       };
 
       if (editingItem) {
-        await updateItem(editingItem.id, payload);
+        await updateCalendarItem(editingItem.id, payload);
       } else {
-        await createItem(payload);
+        await createCalendarItem(payload);
       }
 
       setDialogOpen(false);
@@ -694,7 +779,7 @@ function CalendarPlanner() {
     setActionError(null);
 
     try {
-      await updateItem(itemId, {
+      await updateCalendarItem(itemId, {
         scheduledDate: dateKey,
         status: "scheduled",
       }, { optimistic: true });
@@ -707,7 +792,7 @@ function CalendarPlanner() {
     setActionError(null);
 
     try {
-      await deleteItem(id);
+      await deleteCalendarItem(id);
     } catch (deleteError) {
       setActionError(deleteError instanceof Error ? deleteError.message : "Unable to delete item.");
     }
@@ -779,7 +864,7 @@ function CalendarPlanner() {
           <div className="mt-3 rounded-lg border border-destructive/25 bg-red-50 px-3 py-2 text-sm text-destructive">
             {error ?? actionError}
             {error && (
-              <button type="button" className="ml-2 font-semibold underline" onClick={reload}>
+              <button type="button" className="ml-2 font-semibold underline" onClick={() => void reloadCalendarItems()}>
                 Retry
               </button>
             )}
@@ -837,9 +922,12 @@ function CalendarPlanner() {
                     </button>
                   </div>
 
-                  <div className="mt-2 space-y-1.5">
+                  <div className="mt-2 flex max-h-[80px] flex-col gap-1 overflow-y-auto">
                     {loading ? (
-                      <div className="h-7 animate-pulse rounded-lg bg-muted" />
+                      <>
+                        <div className="h-5 animate-pulse rounded-md bg-muted" />
+                        <div className="h-5 animate-pulse rounded-md bg-muted" />
+                      </>
                     ) : (
                       dayItems.map((item) => (
                         <CalendarTaskChip
@@ -862,6 +950,7 @@ function CalendarPlanner() {
         drafts={draftItems}
         loading={loading}
         onCreateDraft={() => openDialog(null)}
+        onOpen={openEditDialog}
         onDelete={(id) => void handleDelete(id)}
       />
 
@@ -889,7 +978,6 @@ function CalendarTaskChip({
   onDelete: () => void;
 }) {
   const category = getCategory(item.category);
-  const TypeIcon = item.itemType === "reminder" ? Bell : CheckCircle2;
 
   return (
     <div
@@ -901,8 +989,8 @@ function CalendarTaskChip({
       }}
       onClick={onOpen}
       className={cn(
-        "group cursor-pointer rounded-lg border border-border border-l-4 bg-white p-2 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-soft",
-        category.border
+        "group flex min-w-0 cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-left transition hover:opacity-90",
+        category.badge
       )}
       role="button"
       tabIndex={0}
@@ -913,29 +1001,22 @@ function CalendarTaskChip({
         }
       }}
       aria-label={`Edit ${item.title}`}
+      title={item.title}
     >
-      <div className="flex min-w-0 items-start gap-1.5">
-        <GripVertical className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[11px] font-semibold leading-4">{item.title}</p>
-          <div className="mt-1 flex min-w-0 items-center gap-1 text-[10px] text-muted-foreground">
-            <TypeIcon className="h-3 w-3 shrink-0" aria-hidden="true" />
-            <span className="truncate">{item.scheduledTime || item.itemType}</span>
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            onDelete();
-          }}
-          className="grid h-5 w-5 shrink-0 place-items-center rounded-md text-muted-foreground opacity-0 transition hover:bg-red-50 hover:text-destructive group-hover:opacity-100"
-          aria-label={`Delete ${item.title}`}
-          title="Delete"
-        >
-          <Trash2 className="h-3 w-3" aria-hidden="true" />
-        </button>
-      </div>
+      <GripVertical className="h-3 w-3 shrink-0 opacity-50" aria-hidden="true" />
+      <span className="min-w-0 flex-1 truncate text-xs font-medium">{item.title}</span>
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          onDelete();
+        }}
+        className="grid h-4 w-4 shrink-0 place-items-center rounded text-current opacity-0 transition hover:bg-white/60 group-hover:opacity-100"
+        aria-label={`Delete ${item.title}`}
+        title="Delete"
+      >
+        <Trash2 className="h-3 w-3" aria-hidden="true" />
+      </button>
     </div>
   );
 }
@@ -944,11 +1025,13 @@ function DraftTaskPanel({
   drafts,
   loading,
   onCreateDraft,
+  onOpen,
   onDelete,
 }: {
   drafts: CalendarItem[];
   loading: boolean;
   onCreateDraft: () => void;
+  onOpen: (item: CalendarItem) => void;
   onDelete: (id: number) => void;
 }) {
   return (
@@ -991,7 +1074,19 @@ function DraftTaskPanel({
                   event.dataTransfer.setData("text/plain", String(draft.id));
                   event.dataTransfer.effectAllowed = "move";
                 }}
-                className={cn("rounded-lg border border-border border-l-4 bg-white p-3 shadow-sm", category.border)}
+                onClick={() => onOpen(draft)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onOpen(draft);
+                  }
+                }}
+                role="button"
+                tabIndex={0}
+                className={cn(
+                  "cursor-pointer rounded-lg border border-border border-l-4 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-soft",
+                  category.border
+                )}
               >
                 <div className="flex items-start gap-2">
                   <GripVertical className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />

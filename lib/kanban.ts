@@ -1,6 +1,7 @@
 import { and, asc, eq } from "drizzle-orm";
 
 import { calendarItems, db, kanbanBoards, kanbanColumns, kanbanTasks, type KanbanLabel, type KanbanTask } from "@/db";
+import { normalizeCalendarDateKey } from "@/lib/calendar-items";
 import { syncCurrentUserToDatabase } from "@/lib/sync-user";
 
 export const defaultKanbanColumns = ["Todo", "In Progress", "Done"];
@@ -215,12 +216,53 @@ export async function getBoardsWithDetails(userId: number) {
   return hydrateFromJoinRows(rows);
 }
 
-export async function syncTaskToCalendar(task: KanbanTask, userId: number) {
+export type KanbanCalendarSyncResult = {
+  task: KanbanTask;
+  calendarItem: typeof calendarItems.$inferSelect | null;
+};
+
+export async function getKanbanTaskByCalendarItemId(calendarItemId: number, userId: number) {
+  const [row] = await db
+    .select({ task: kanbanTasks })
+    .from(kanbanTasks)
+    .innerJoin(kanbanBoards, eq(kanbanTasks.boardId, kanbanBoards.id))
+    .where(and(eq(kanbanTasks.calendarItemId, calendarItemId), eq(kanbanBoards.userId, userId)));
+
+  return row?.task ?? null;
+}
+
+export async function syncCalendarDateToKanbanTask(
+  calendarItemId: number,
+  scheduledDate: string | null,
+  userId: number
+) {
+  const normalizedDate = normalizeCalendarDateKey(scheduledDate);
+
+  if (!normalizedDate) {
+    return null;
+  }
+
+  const linkedTask = await getKanbanTaskByCalendarItemId(calendarItemId, userId);
+
+  if (!linkedTask) {
+    return null;
+  }
+
+  const [updatedTask] = await db
+    .update(kanbanTasks)
+    .set({ dueDate: normalizedDate, updatedAt: new Date() })
+    .where(eq(kanbanTasks.id, linkedTask.id))
+    .returning();
+
+  return updatedTask ?? null;
+}
+
+export async function syncTaskToCalendar(task: KanbanTask, userId: number): Promise<KanbanCalendarSyncResult> {
   const now = new Date();
 
   if (!task.syncCalendar) {
     if (!task.calendarItemId) {
-      return task;
+      return { task, calendarItem: null };
     }
 
     await db
@@ -232,20 +274,21 @@ export async function syncTaskToCalendar(task: KanbanTask, userId: number) {
       .where(eq(kanbanTasks.id, task.id))
       .returning();
 
-    return updatedTask ?? task;
+    return { task: updatedTask ?? task, calendarItem: null };
   }
 
   const category = priorityCategory[task.priority as keyof typeof priorityCategory] ?? priorityCategory.Medium;
+  const scheduledDate = normalizeCalendarDateKey(task.dueDate) ?? getTodayKey();
   const calendarInput = {
     userId,
     title: task.title,
     description: task.description,
-    itemType: "task",
+    itemType: "task" as const,
     category: category.category,
     categoryColor: category.categoryColor,
-    scheduledDate: task.dueDate,
+    scheduledDate,
     scheduledTime: null,
-    status: "scheduled",
+    status: "scheduled" as const,
     updatedAt: now,
   };
 
@@ -257,18 +300,32 @@ export async function syncTaskToCalendar(task: KanbanTask, userId: number) {
       .returning();
 
     if (item) {
-      return task;
+      const [updatedTask] = await db
+        .select()
+        .from(kanbanTasks)
+        .where(eq(kanbanTasks.id, task.id));
+
+      return { task: updatedTask ?? task, calendarItem: item };
     }
   }
 
   const [item] = await db.insert(calendarItems).values(calendarInput).returning();
+
+  if (!item) {
+    throw new Error("Failed to create linked calendar item");
+  }
+
   const [updatedTask] = await db
     .update(kanbanTasks)
     .set({ calendarItemId: item.id, updatedAt: now })
     .where(eq(kanbanTasks.id, task.id))
     .returning();
 
-  return updatedTask ?? task;
+  if (!updatedTask) {
+    throw new Error("Failed to save calendar link on kanban task");
+  }
+
+  return { task: updatedTask, calendarItem: item };
 }
 
 export async function deleteTaskCalendarItem(calendarItemId: number, userId: number) {

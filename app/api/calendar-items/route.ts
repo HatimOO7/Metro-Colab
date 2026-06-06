@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 
 import { db, calendarItems } from "@/db";
+import { mapApiCalendarItem, normalizeCalendarDateKey } from "@/lib/calendar-items";
 import { syncCurrentUserToDatabase } from "@/lib/sync-user";
 
 const allowedTypes = new Set(["task", "reminder"]);
@@ -33,10 +34,14 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const items = await db
+  const rows = await db
     .select()
     .from(calendarItems)
     .where(eq(calendarItems.userId, user.id));
+
+  const items = rows
+    .map((row) => mapApiCalendarItem(row))
+    .filter((item): item is NonNullable<typeof item> => Boolean(item));
 
   return NextResponse.json({ items });
 }
@@ -60,7 +65,7 @@ export async function POST(request: Request) {
   const requestedType = normalizeText((body as Record<string, unknown>).itemType);
   const requestedStatus = normalizeText((body as Record<string, unknown>).status);
   const status = allowedStatuses.has(requestedStatus) ? requestedStatus : "scheduled";
-  const scheduledDate = normalizeOptionalText((body as Record<string, unknown>).scheduledDate);
+  const scheduledDate = normalizeCalendarDateKey(normalizeOptionalText((body as Record<string, unknown>).scheduledDate));
 
   if (!title || !category || !categoryColor) {
     return NextResponse.json({ error: "Title, category, and category color are required" }, { status: 400 });
@@ -86,5 +91,11 @@ export async function POST(request: Request) {
     })
     .returning();
 
-  return NextResponse.json({ item }, { status: 201 });
+  const mappedItem = mapApiCalendarItem(item);
+
+  if (!mappedItem) {
+    return NextResponse.json({ error: "Failed to serialize calendar item" }, { status: 500 });
+  }
+
+  return NextResponse.json({ item: mappedItem }, { status: 201 });
 }

@@ -17,43 +17,17 @@ import * as React from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import {
+  collectKanbanSearchResults,
+  filterKanbanBoards,
+  mapApiCalendarItemFromPayload,
+  useWorkspaceData,
+  type KanbanBoard,
+  type KanbanColumn,
+  type KanbanLabel,
+  type KanbanTask,
+} from "@/components/workspace-data";
 import { cn } from "@/lib/utils";
-
-type KanbanLabel = {
-  name: string;
-  color: string;
-};
-
-type KanbanTask = {
-  id: number;
-  boardId: number;
-  columnId: number;
-  title: string;
-  description: string | null;
-  dueDate: string;
-  priority: "Low" | "Medium" | "High";
-  labels: KanbanLabel[];
-  syncCalendar: boolean;
-  linkNotes: boolean;
-  calendarItemId: number | null;
-  position: number;
-};
-
-type KanbanColumn = {
-  id: number;
-  boardId: number;
-  name: string;
-  position: number;
-  tasks: KanbanTask[];
-};
-
-type KanbanBoard = {
-  id: number;
-  userId: number;
-  name: string;
-  color: string;
-  columns: KanbanColumn[];
-};
 
 type BoardForm = {
   name: string;
@@ -185,15 +159,85 @@ async function readPayload(response: Response) {
 }
 
 export function KanbanBoardPage() {
-  const [boards, setBoards] = React.useState<KanbanBoard[]>([]);
+  const {
+    searchQuery,
+    kanbanBoards,
+    kanbanLoading,
+    kanbanReady,
+    kanbanError,
+    setKanbanBoards,
+    reloadKanbanBoards,
+    createBoardRequested,
+    clearCreateBoardRequest,
+    upsertCalendarItem,
+    removeCalendarItem,
+    reloadCalendarItems,
+    pendingKanbanTaskEdit,
+    clearKanbanTaskEditRequest,
+  } = useWorkspaceData();
+
   const [selectedBoardId, setSelectedBoardId] = React.useState<number | null>(null);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
   const [actionError, setActionError] = React.useState<string | null>(null);
   const [boardDialogOpen, setBoardDialogOpen] = React.useState(false);
   const [editingBoard, setEditingBoard] = React.useState<KanbanBoard | null>(null);
   const [taskDialog, setTaskDialog] = React.useState<{ columnId: number; task: KanbanTask | null } | null>(null);
   const [draggingTaskId, setDraggingTaskId] = React.useState<number | null>(null);
+
+  const loading = kanbanLoading && !kanbanReady;
+  const error = kanbanError;
+  const boards = React.useMemo(
+    () => filterKanbanBoards(kanbanBoards, searchQuery),
+    [kanbanBoards, searchQuery]
+  );
+  const searchResults = React.useMemo(
+    () => collectKanbanSearchResults(kanbanBoards, searchQuery),
+    [kanbanBoards, searchQuery]
+  );
+
+  React.useEffect(() => {
+    if (!kanbanReady || boards.length === 0) {
+      return;
+    }
+
+    setSelectedBoardId((currentId) => {
+      if (currentId && boards.some((board) => board.id === currentId)) {
+        return currentId;
+      }
+
+      return boards[0]?.id ?? null;
+    });
+  }, [boards, kanbanReady]);
+
+  React.useEffect(() => {
+    if (!createBoardRequested) {
+      return;
+    }
+
+    setEditingBoard(null);
+    setBoardDialogOpen(true);
+    clearCreateBoardRequest();
+  }, [clearCreateBoardRequest, createBoardRequested]);
+
+  React.useEffect(() => {
+    if (!pendingKanbanTaskEdit || !kanbanReady) {
+      return;
+    }
+
+    const { boardId, columnId, taskId } = pendingKanbanTaskEdit;
+    const task = kanbanBoards
+      .find((board) => board.id === boardId)
+      ?.columns.flatMap((column) => column.tasks)
+      .find((currentTask) => currentTask.id === taskId);
+
+    setSelectedBoardId(boardId);
+
+    if (!task) {
+      return;
+    }
+
+    setTaskDialog({ columnId, task });
+    clearKanbanTaskEditRequest();
+  }, [clearKanbanTaskEditRequest, kanbanBoards, kanbanReady, pendingKanbanTaskEdit]);
 
   const selectedBoard = React.useMemo(
     () => boards.find((board) => board.id === selectedBoardId) ?? boards[0] ?? null,
@@ -204,37 +248,14 @@ export function KanbanBoardPage() {
     [selectedBoard]
   );
 
-  const replaceBoard = React.useCallback((board: KanbanBoard) => {
-    setBoards((currentBoards) => currentBoards.map((currentBoard) => (currentBoard.id === board.id ? board : currentBoard)));
-  }, []);
-
-  const loadBoards = React.useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const response = await fetch("/api/kanban/boards", { cache: "no-store" });
-      const payload = await readPayload(response);
-      const loadedBoards = (payload.boards ?? []) as KanbanBoard[];
-
-      setBoards(loadedBoards);
-      setSelectedBoardId((currentId) => {
-        if (currentId && loadedBoards.some((board) => board.id === currentId)) {
-          return currentId;
-        }
-
-        return loadedBoards[0]?.id ?? null;
-      });
-    } catch (fetchError) {
-      setError(fetchError instanceof Error ? fetchError.message : "Unable to load boards.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  React.useEffect(() => {
-    void loadBoards();
-  }, [loadBoards]);
+  const replaceBoard = React.useCallback(
+    (board: KanbanBoard) => {
+      setKanbanBoards((currentBoards) =>
+        currentBoards.map((currentBoard) => (currentBoard.id === board.id ? board : currentBoard))
+      );
+    },
+    [setKanbanBoards]
+  );
 
   async function handleSaveBoard(form: BoardForm) {
     setActionError(null);
@@ -250,7 +271,7 @@ export function KanbanBoardPage() {
       if (editingBoard) {
         replaceBoard(payload.board);
       } else {
-        setBoards((currentBoards) => [...currentBoards, payload.board]);
+        setKanbanBoards((currentBoards) => [...currentBoards, payload.board]);
         setSelectedBoardId(payload.board.id);
       }
 
@@ -267,8 +288,8 @@ export function KanbanBoardPage() {
     try {
       const response = await fetch(`/api/kanban/boards/${board.id}`, { method: "DELETE" });
       await readPayload(response);
-      const nextBoards = boards.filter((currentBoard) => currentBoard.id !== board.id);
-      setBoards(nextBoards);
+      const nextBoards = kanbanBoards.filter((currentBoard) => currentBoard.id !== board.id);
+      setKanbanBoards(nextBoards);
       setSelectedBoardId(nextBoards[0]?.id ?? null);
     } catch (deleteError) {
       setActionError(deleteError instanceof Error ? deleteError.message : "Unable to delete board.");
@@ -369,10 +390,12 @@ export function KanbanBoardPage() {
       const columnId = taskDialog.columnId;
       const editingTaskId = taskDialog.task?.id ?? null;
       const tempTaskId = isEditing ? null : -Date.now();
+      const shouldRefreshCalendar = form.syncCalendar || Boolean(taskDialog.task?.syncCalendar);
+      const previousCalendarItemId = taskDialog.task?.calendarItemId ?? null;
       let previousBoard: KanbanBoard | null = null;
 
       setActionError(null);
-      setBoards((currentBoards) =>
+      setKanbanBoards((currentBoards) =>
         currentBoards.map((board) => {
           if (board.id !== boardId) {
             return board;
@@ -425,24 +448,39 @@ export function KanbanBoardPage() {
         });
         const payload = await readPayload(response);
         const serverTask = payload.task as KanbanTask;
+        const syncedCalendarItem = mapApiCalendarItemFromPayload(payload.calendarItem);
 
-        setBoards((currentBoards) =>
-          currentBoards.map((board) => {
-            if (board.id !== boardId) {
+        if (payload.board) {
+          replaceBoard(payload.board as KanbanBoard);
+        } else {
+          setKanbanBoards((currentBoards) =>
+            currentBoards.map((board) => {
+              if (board.id !== boardId) {
+                return board;
+              }
+
+              if (isEditing && editingTaskId) {
+                return updateTaskInBoard(board, editingTaskId, serverTask);
+              }
+
+              if (tempTaskId) {
+                return replaceTempTask(board, tempTaskId, serverTask);
+              }
+
               return board;
-            }
+            })
+          );
+        }
 
-            if (isEditing && editingTaskId) {
-              return updateTaskInBoard(board, editingTaskId, serverTask);
-            }
+        if (syncedCalendarItem) {
+          upsertCalendarItem(syncedCalendarItem);
+        } else if (!serverTask.syncCalendar && previousCalendarItemId) {
+          removeCalendarItem(previousCalendarItemId);
+        }
 
-            if (tempTaskId) {
-              return replaceTempTask(board, tempTaskId, serverTask);
-            }
-
-            return board;
-          })
-        );
+        if (shouldRefreshCalendar || serverTask.syncCalendar) {
+          await reloadCalendarItems({ silent: true });
+        }
       } catch (saveError) {
         if (previousBoard) {
           replaceBoard(previousBoard);
@@ -453,7 +491,7 @@ export function KanbanBoardPage() {
         toast.error(message);
       }
     },
-    [replaceBoard, sortedSelectedBoard, taskDialog]
+    [reloadCalendarItems, removeCalendarItem, replaceBoard, setKanbanBoards, sortedSelectedBoard, taskDialog, upsertCalendarItem]
   );
 
   const handleDeleteTask = React.useCallback(
@@ -466,7 +504,7 @@ export function KanbanBoardPage() {
       let previousBoard: KanbanBoard | null = null;
 
       setActionError(null);
-      setBoards((currentBoards) =>
+      setKanbanBoards((currentBoards) =>
         currentBoards.map((board) => {
           if (board.id !== boardId) {
             return board;
@@ -479,7 +517,17 @@ export function KanbanBoardPage() {
 
       try {
         const response = await fetch(`/api/kanban/tasks/${task.id}`, { method: "DELETE" });
-        await readPayload(response);
+        const payload = await readPayload(response);
+
+        if (payload.board) {
+          replaceBoard(payload.board as KanbanBoard);
+        }
+
+        if (task.calendarItemId) {
+          removeCalendarItem(task.calendarItemId);
+        } else if (task.syncCalendar) {
+          void reloadCalendarItems({ silent: true });
+        }
       } catch (deleteError) {
         if (previousBoard) {
           replaceBoard(previousBoard);
@@ -490,7 +538,7 @@ export function KanbanBoardPage() {
         toast.error(message);
       }
     },
-    [replaceBoard, sortedSelectedBoard]
+    [reloadCalendarItems, removeCalendarItem, replaceBoard, setKanbanBoards, sortedSelectedBoard]
   );
 
   const handleTaskDrop = React.useCallback(
@@ -507,7 +555,7 @@ export function KanbanBoardPage() {
         columns: Array<{ columnId: number; taskIds: number[] }>;
       } | null = null;
 
-      setBoards((currentBoards) =>
+      setKanbanBoards((currentBoards) =>
         currentBoards.map((board) => {
           if (board.id !== boardId) {
             return board;
@@ -574,7 +622,7 @@ export function KanbanBoardPage() {
         toast.error(message);
       }
     },
-    [draggingTaskId, replaceBoard, sortedSelectedBoard]
+    [draggingTaskId, replaceBoard, setKanbanBoards, sortedSelectedBoard]
   );
 
   const handleDragStart = React.useCallback((taskId: number) => {
@@ -591,10 +639,36 @@ export function KanbanBoardPage() {
         <div className="rounded-lg border border-destructive/25 bg-red-50 px-3 py-2 text-sm text-destructive">
           {error ?? actionError}
           {error && (
-            <button type="button" className="ml-2 font-semibold underline" onClick={() => void loadBoards()}>
+            <button type="button" className="ml-2 font-semibold underline" onClick={() => void reloadKanbanBoards()}>
               Retry
             </button>
           )}
+        </div>
+      )}
+
+      {searchQuery.trim() && searchResults.length > 0 && (
+        <div className="rounded-lg border border-border bg-white p-3 shadow-soft">
+          <p className="text-xs font-semibold text-muted-foreground">
+            {searchResults.length} matching task{searchResults.length === 1 ? "" : "s"}
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {searchResults.map(({ board, column, task }) => (
+              <button
+                key={task.id}
+                type="button"
+                onClick={() => {
+                  setSelectedBoardId(board.id);
+                  setTaskDialog({ columnId: column.id, task });
+                }}
+                className="max-w-full rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-left transition hover:bg-emerald-100"
+              >
+                <span className="block truncate text-xs font-semibold text-foreground">{task.title}</span>
+                <span className="block truncate text-[10px] text-muted-foreground">
+                  {board.name} · {column.name}
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -622,10 +696,11 @@ export function KanbanBoardPage() {
 
           <div className="mt-3 space-y-1.5">
             {loading && (
-              <>
+              <div className="space-y-1.5" aria-busy="true" aria-label="Loading boards">
                 <div className="h-12 animate-pulse rounded-lg bg-muted" />
                 <div className="h-12 animate-pulse rounded-lg bg-muted" />
-              </>
+                <div className="h-12 animate-pulse rounded-lg bg-muted" />
+              </div>
             )}
 
             {!loading && boards.length === 0 && (
@@ -680,13 +755,33 @@ export function KanbanBoardPage() {
         </aside>
 
         <section className="min-w-0 rounded-lg border border-border bg-card p-3 shadow-soft sm:p-4">
-          {!sortedSelectedBoard ? (
+          {loading ? (
+            <div className="space-y-4" aria-busy="true" aria-label="Loading kanban board">
+              <div className="flex items-center gap-2">
+                <div className="h-3 w-3 animate-pulse rounded-full bg-muted" />
+                <div className="h-6 w-40 animate-pulse rounded-md bg-muted" />
+              </div>
+              <div className="flex gap-3 overflow-hidden">
+                {[0, 1, 2].map((column) => (
+                  <div key={column} className="w-[280px] shrink-0 space-y-2 rounded-lg border border-border bg-white/85 p-3">
+                    <div className="h-5 w-24 animate-pulse rounded-md bg-muted" />
+                    <div className="h-20 animate-pulse rounded-lg bg-muted" />
+                    <div className="h-20 animate-pulse rounded-lg bg-muted" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : !sortedSelectedBoard ? (
             <div className="grid min-h-[420px] place-items-center rounded-lg border border-dashed border-border bg-white/70 p-6 text-center">
               <div>
                 <ClipboardCheck className="mx-auto h-9 w-9 text-emerald-600" aria-hidden="true" />
-                <p className="mt-3 text-sm font-semibold">No board selected</p>
+                <p className="mt-3 text-sm font-semibold">
+                  {searchQuery.trim() ? "No matching boards or tasks" : "No board selected"}
+                </p>
                 <p className="mt-1 max-w-sm text-sm leading-6 text-muted-foreground">
-                  Create a board and Metro Colab will add Todo, In Progress, and Done columns.
+                  {searchQuery.trim()
+                    ? "Try a different search term or clear the search bar."
+                    : "Create a board and Metro Colab will add Todo, In Progress, and Done columns."}
                 </p>
               </div>
             </div>
