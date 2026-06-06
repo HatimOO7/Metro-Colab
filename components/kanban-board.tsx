@@ -30,6 +30,14 @@ import {
 import { Thread, Composer } from "@liveblocks/react-ui";
 
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   collectKanbanSearchResults,
   filterKanbanBoards,
@@ -863,6 +871,14 @@ export function KanbanBoardPage() {
                       })}
                     </div>
                   </div>
+                  {taskDialog && (
+                    <KanbanTaskSheet
+                      task={taskDialog.task}
+                      error={actionError}
+                      onClose={() => setTaskDialog(null)}
+                      onSave={handleSaveTask}
+                    />
+                  )}
                 </>
               </ClientSideSuspense>
             </RoomProvider>
@@ -879,15 +895,6 @@ export function KanbanBoardPage() {
             setEditingBoard(null);
           }}
           onSave={handleSaveBoard}
-        />
-      )}
-
-      {taskDialog && (
-        <KanbanTaskDialog
-          task={taskDialog.task}
-          error={actionError}
-          onClose={() => setTaskDialog(null)}
-          onSave={handleSaveTask}
         />
       )}
 
@@ -1136,10 +1143,10 @@ function TaskCommentsIndicator({ taskId }: { taskId: number }) {
   if (commentsCount === 0) return null;
 
   return (
-    <div className="flex items-center gap-1 text-[10px] font-medium" title={`${commentsCount} comments`}>
-      <MessageSquare className="h-3 w-3" aria-hidden="true" />
+    <Badge variant="secondary" className="flex items-center gap-1.5 px-2 py-0.5 text-[10px] h-6 font-semibold shadow-sm hover:bg-secondary/80 transition-colors">
+      <MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />
       {commentsCount}
-    </div>
+    </Badge>
   );
 }
 
@@ -1223,7 +1230,7 @@ function BoardDialog({
   );
 }
 
-function KanbanTaskDialog({
+function KanbanTaskSheet({
   task,
   error,
   onClose,
@@ -1264,15 +1271,19 @@ function KanbanTaskDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-foreground/30 px-4 py-6 backdrop-blur-sm">
-      <div className={cn(
-        "w-full rounded-lg border border-border bg-card shadow-soft grid",
-        task ? "max-w-4xl grid-cols-1 md:grid-cols-2" : "max-w-xl grid-cols-1"
-      )}>
+    <Sheet open={true} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <SheetContent 
+        className={cn(
+          "p-0 flex flex-col md:flex-row overflow-hidden sm:max-w-xl md:max-w-3xl lg:max-w-4xl xl:max-w-5xl border-l-0 sm:border-l",
+          !task && "md:max-w-xl"
+        )}
+      >
         {/* Task Form Section */}
-        <div className="flex flex-col max-h-[92vh] overflow-y-auto p-4">
-          <DialogHeader title={task ? "Edit task" : "Create task"} onClose={onClose} />
-          <form className="mt-4 space-y-3 flex-1" onSubmit={(event) => event.preventDefault()}>
+        <div className="flex flex-col flex-1 h-full max-h-[100dvh] overflow-y-auto p-6 relative">
+          <SheetHeader className="mb-4 text-left">
+            <SheetTitle>{task ? "Edit task" : "Create task"}</SheetTitle>
+          </SheetHeader>
+          <form className="space-y-4 flex-1" onSubmit={(event) => event.preventDefault()}>
           <label className="block">
             <span className="text-xs font-semibold text-muted-foreground">Title</span>
             <input
@@ -1386,7 +1397,7 @@ function KanbanTaskDialog({
 
           {error && <div className="rounded-lg border border-destructive/25 bg-red-50 px-3 py-2 text-sm text-destructive">{error}</div>}
 
-          <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
+          <div className="flex flex-col-reverse gap-2 pt-4 sm:flex-row sm:justify-end">
             <Button type="button" variant="outline" className="h-9 rounded-lg bg-white text-xs" onClick={onClose}>
               Cancel
             </Button>
@@ -1405,20 +1416,22 @@ function KanbanTaskDialog({
 
         {/* Task Comments Section */}
         {task && (
-          <div className="flex flex-col max-h-[92vh] overflow-y-auto bg-muted/20 border-t md:border-t-0 md:border-l border-border p-4">
-            <div className="flex items-center gap-2 mb-4">
-              <MessageSquare className="h-4 w-4 text-muted-foreground" />
-              <p className="text-sm font-semibold">Comments</p>
+          <div className="flex flex-col w-full md:w-[400px] lg:w-[450px] shrink-0 bg-slate-50/50 dark:bg-muted/10 border-t md:border-t-0 md:border-l border-border h-full max-h-[100dvh] overflow-hidden">
+            <div className="flex items-center gap-2.5 p-6 pb-4 border-b border-border/50 bg-white/50 dark:bg-background/50">
+              <div className="p-1.5 rounded-md bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400">
+                <MessageSquare className="h-4 w-4" />
+              </div>
+              <h3 className="text-[15px] font-semibold">Discussion</h3>
             </div>
-            <div className="flex-1 min-h-0 relative">
-              <ClientSideSuspense fallback={<div className="text-xs text-muted-foreground p-4 text-center">Loading comments...</div>}>
+            <div className="flex-1 min-h-0 relative px-6 pb-6 pt-4">
+              <ClientSideSuspense fallback={<div className="text-xs text-muted-foreground py-12 flex items-center justify-center gap-2"><Loader2 className="h-4 w-4 animate-spin"/> Loading thread...</div>}>
                 <TaskComments taskId={task.id} />
               </ClientSideSuspense>
             </div>
           </div>
         )}
-      </div>
-    </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -1427,20 +1440,28 @@ function TaskComments({ taskId }: { taskId: number }) {
   const createThread = useCreateThread();
 
   return (
-    <div className="flex flex-col h-full space-y-4">
-      <div className="flex-1 space-y-4 max-h-[500px] overflow-y-auto pr-2 pb-2">
-        {threads?.length === 0 ? (
-          <p className="text-xs text-muted-foreground text-center py-8">No comments yet. Start the discussion!</p>
-        ) : (
-          threads?.map((thread) => (
-            <div key={thread.id} className="rounded-lg border border-border bg-white shadow-sm overflow-hidden">
-              <Thread thread={thread} className="w-full" />
+    <div className="flex flex-col h-full gap-4">
+      <ScrollArea className="flex-1 -mx-2 px-2">
+        <div className="space-y-4 pb-4">
+          {threads?.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <div className="h-12 w-12 rounded-full bg-white flex items-center justify-center shadow-sm border border-border mb-3">
+                <MessageSquare className="h-5 w-5 text-muted-foreground" />
+              </div>
+              <p className="text-sm font-medium text-foreground">No comments yet</p>
+              <p className="text-xs text-muted-foreground mt-1">Start the conversation!</p>
             </div>
-          ))
-        )}
-      </div>
+          ) : (
+            threads?.map((thread) => (
+              <div key={thread.id} className="rounded-lg border border-border bg-white shadow-sm overflow-hidden transition-all hover:shadow-md">
+                <Thread thread={thread} className="w-full" />
+              </div>
+            ))
+          )}
+        </div>
+      </ScrollArea>
       
-      <div className="sticky bottom-0 bg-white border border-border rounded-lg shadow-sm mt-auto overflow-hidden">
+      <div className="bg-white border border-border rounded-xl shadow-sm overflow-hidden shrink-0 transition-shadow focus-within:ring-2 focus-within:ring-emerald-500/20 focus-within:border-emerald-500">
         <Composer
           onComposerSubmit={({ body }, event) => {
             event.preventDefault();
