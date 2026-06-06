@@ -46,6 +46,7 @@ export type KanbanBoard = {
   name: string;
   color: string;
   columns: KanbanColumn[];
+  sharedEmails?: string[];
 };
 
 export type KanbanSearchResult = {

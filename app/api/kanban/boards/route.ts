@@ -16,7 +16,7 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const boards = await getBoardsWithDetails(user.id);
+  const boards = await getBoardsWithDetails(user.id, user.email);
 
   return NextResponse.json({ boards });
 }

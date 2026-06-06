@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, or, sql } from "drizzle-orm";
 
 import { calendarItems, db, kanbanBoards, kanbanColumns, kanbanTasks, type KanbanLabel, type KanbanTask } from "@/db";
 import { normalizeCalendarDateKey } from "@/lib/calendar-items";
@@ -194,7 +194,14 @@ export async function getBoardWithDetails(boardId: number, userId: number) {
   return hydrateFromJoinRows(rows)[0] ?? null;
 }
 
-export async function getBoardsWithDetails(userId: number) {
+export async function getBoardsWithDetails(userId: number, email?: string) {
+  const whereClause = email 
+    ? or(
+        eq(kanbanBoards.userId, userId),
+        sql`${kanbanBoards.sharedEmails} @> ${JSON.stringify([email])}::jsonb`
+      )
+    : eq(kanbanBoards.userId, userId);
+
   const rows = await db
     .select({
       board: kanbanBoards,
@@ -204,7 +211,7 @@ export async function getBoardsWithDetails(userId: number) {
     .from(kanbanBoards)
     .leftJoin(kanbanColumns, eq(kanbanColumns.boardId, kanbanBoards.id))
     .leftJoin(kanbanTasks, eq(kanbanTasks.boardId, kanbanBoards.id))
-    .where(eq(kanbanBoards.userId, userId))
+    .where(whereClause)
     .orderBy(
       asc(kanbanBoards.createdAt),
       asc(kanbanColumns.position),

@@ -12,9 +12,20 @@ import {
   Save,
   Trash2,
   X,
+  Users,
+  MessageSquare,
 } from "lucide-react";
 import * as React from "react";
 import { toast } from "sonner";
+import {
+  LiveblocksProvider,
+  RoomProvider,
+  ClientSideSuspense,
+  useOthers,
+  useThreads,
+  useCreateThread,
+} from "@liveblocks/react/suspense";
+import { Thread, Composer } from "@liveblocks/react-ui";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -91,11 +102,12 @@ function taskToForm(task: KanbanTask): TaskForm {
 }
 
 function sortColumns(columns: KanbanColumn[]) {
+  if (!columns) return [];
   return [...columns]
     .sort((first, second) => first.position - second.position || first.id - second.id)
     .map((column) => ({
       ...column,
-      tasks: [...column.tasks].sort((first, second) => first.position - second.position || first.id - second.id),
+      tasks: column.tasks ? [...column.tasks].sort((first, second) => first.position - second.position || first.id - second.id) : [],
     }));
 }
 
@@ -182,6 +194,7 @@ export function KanbanBoardPage() {
   const [editingBoard, setEditingBoard] = React.useState<KanbanBoard | null>(null);
   const [taskDialog, setTaskDialog] = React.useState<{ columnId: number; task: KanbanTask | null } | null>(null);
   const [draggingTaskId, setDraggingTaskId] = React.useState<number | null>(null);
+  const [shareDialogOpen, setShareDialogOpen] = React.useState(false);
 
   const loading = kanbanLoading && !kanbanReady;
   const error = kanbanError;
@@ -634,6 +647,7 @@ export function KanbanBoardPage() {
   }, []);
 
   return (
+    <LiveblocksProvider authEndpoint="/api/liveblocks-auth">
     <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 px-4 py-5 lg:px-6">
       {(error || actionError) && (
         <div className="rounded-lg border border-destructive/25 bg-red-50 px-3 py-2 text-sm text-destructive">
@@ -786,54 +800,70 @@ export function KanbanBoardPage() {
               </div>
             </div>
           ) : (
-            <>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="h-3 w-3 rounded-full" style={{ backgroundColor: sortedSelectedBoard.color }} />
-                    <h2 className="truncate text-xl font-semibold">{sortedSelectedBoard.name}</h2>
+            <RoomProvider id={`kanban-board-${sortedSelectedBoard.id}`} initialPresence={{}}>
+              <ClientSideSuspense fallback={<div className="p-4 text-center text-sm text-muted-foreground">Loading collaboration...</div>}>
+                <>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="h-3 w-3 rounded-full" style={{ backgroundColor: sortedSelectedBoard.color }} />
+                        <h2 className="truncate text-xl font-semibold">{sortedSelectedBoard.name}</h2>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {sortedSelectedBoard.columns.length}/5 columns
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <ActiveCollaborators />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-9 rounded-lg bg-white text-xs hover:bg-muted"
+                        onClick={() => setShareDialogOpen(true)}
+                      >
+                        <Users className="mr-2 h-4 w-4" aria-hidden="true" />
+                        Share
+                      </Button>
+                      <Button
+                        type="button"
+                        className="h-9 rounded-lg bg-foreground text-xs text-background hover:bg-foreground/90"
+                        onClick={() => void handleAddColumn()}
+                        disabled={sortedSelectedBoard.columns.length >= 5}
+                      >
+                        <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+                        Add column
+                      </Button>
+                    </div>
                   </div>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {sortedSelectedBoard.columns.length}/5 columns
-                  </p>
-                </div>
 
-                <Button
-                  type="button"
-                  className="h-9 rounded-lg bg-foreground text-xs text-background hover:bg-foreground/90"
-                  onClick={() => void handleAddColumn()}
-                  disabled={sortedSelectedBoard.columns.length >= 5}
-                >
-                  <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
-                  Add column
-                </Button>
-              </div>
+                  <div className="mt-4 min-w-0 overflow-x-auto pb-2">
+                    <div className="flex min-h-[460px] w-max gap-3 pr-2">
+                      {sortedSelectedBoard.columns.map((column) => {
+                        const isDragSource = column.tasks.some((task) => task.id === draggingTaskId);
+                        const isDropTarget = draggingTaskId !== null && !isDragSource;
 
-              <div className="mt-4 min-w-0 overflow-x-auto pb-2">
-                <div className="flex min-h-[460px] w-max gap-3 pr-2">
-                  {sortedSelectedBoard.columns.map((column) => {
-                    const isDragSource = column.tasks.some((task) => task.id === draggingTaskId);
-                    const isDropTarget = draggingTaskId !== null && !isDragSource;
-
-                    return (
-                      <KanbanColumnView
-                        key={column.id}
-                        column={column}
-                        isDropTarget={isDropTarget}
-                        onAddTask={handleAddTask}
-                        onRename={handleRenameColumn}
-                        onDelete={handleDeleteColumn}
-                        onEditTask={openTaskDialog}
-                        onDeleteTask={handleDeleteTask}
-                        onDragStart={handleDragStart}
-                        onDragEnd={handleDragEnd}
-                        onDrop={handleTaskDrop}
-                      />
-                    );
-                  })}
-                </div>
-              </div>
-            </>
+                        return (
+                          <KanbanColumnView
+                            key={column.id}
+                            column={column}
+                            isDropTarget={isDropTarget}
+                            onAddTask={handleAddTask}
+                            onRename={handleRenameColumn}
+                            onDelete={handleDeleteColumn}
+                            onEditTask={openTaskDialog}
+                            onDeleteTask={handleDeleteTask}
+                            onDragStart={handleDragStart}
+                            onDragEnd={handleDragEnd}
+                            onDrop={handleTaskDrop}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              </ClientSideSuspense>
+            </RoomProvider>
           )}
         </section>
       </div>
@@ -858,6 +888,47 @@ export function KanbanBoardPage() {
           onSave={handleSaveTask}
         />
       )}
+
+      {shareDialogOpen && sortedSelectedBoard && (
+        <ShareBoardDialog
+          board={sortedSelectedBoard}
+          onClose={() => setShareDialogOpen(false)}
+          onUpdateBoard={replaceBoard}
+        />
+      )}
+    </div>
+    </LiveblocksProvider>
+  );
+}
+
+function ActiveCollaborators() {
+  const others = useOthers();
+  const activeCount = others.length;
+
+  if (activeCount === 0) return null;
+
+  return (
+    <div className="flex items-center mr-2">
+      <div className="flex -space-x-2">
+        {others.slice(0, 3).map(({ connectionId, info }) => (
+          <div
+            key={connectionId}
+            className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-emerald-500 text-xs font-semibold text-white shadow-sm"
+            title={info?.name || "Anonymous"}
+          >
+            {info?.avatar ? (
+              <img src={info.avatar} alt={info.name} className="h-full w-full rounded-full object-cover" />
+            ) : (
+              (info?.name || "A").charAt(0).toUpperCase()
+            )}
+          </div>
+        ))}
+        {activeCount > 3 && (
+          <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-muted text-[10px] font-semibold text-muted-foreground shadow-sm">
+            +{activeCount - 3}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1019,17 +1090,21 @@ const KanbanTaskCard = React.memo(function KanbanTaskCard({
               ))}
             </div>
           )}
-          <div className="mt-2 flex items-center gap-1.5 text-muted-foreground">
-            {task.syncCalendar && (
-              <span title="Synced to calendar" aria-label="Synced to calendar">
-                <CalendarDays className="h-3.5 w-3.5 text-sky-600" aria-hidden="true" />
-              </span>
-            )}
-            {task.linkNotes && (
-              <span title="Linked to notes" aria-label="Linked to notes">
-                <NotebookTabs className="h-3.5 w-3.5 text-amber-600" aria-hidden="true" />
-              </span>
-            )}
+          <div className="mt-2 flex items-center justify-between text-muted-foreground">
+            <div className="flex items-center gap-1.5">
+              {task.syncCalendar && (
+                <span title="Synced to calendar" aria-label="Synced to calendar">
+                  <CalendarDays className="h-3.5 w-3.5 text-sky-600" aria-hidden="true" />
+                </span>
+              )}
+              {task.linkNotes && (
+                <span title="Linked to notes" aria-label="Linked to notes">
+                  <NotebookTabs className="h-3.5 w-3.5 text-amber-600" aria-hidden="true" />
+                </span>
+              )}
+            </div>
+            
+            <TaskCommentsIndicator taskId={task.id} />
           </div>
         </div>
         <button
@@ -1048,6 +1123,23 @@ const KanbanTaskCard = React.memo(function KanbanTaskCard({
     </div>
   );
 });
+
+function TaskCommentsIndicator({ taskId }: { taskId: number }) {
+  const { threads } = useThreads({ query: { metadata: { taskId: String(taskId) } } });
+  
+  if (!threads || threads.length === 0) return null;
+  
+  const commentsCount = threads.reduce((acc, thread) => acc + thread.comments.length, 0);
+  
+  if (commentsCount === 0) return null;
+
+  return (
+    <div className="flex items-center gap-1 text-[10px] font-medium" title={`${commentsCount} comments`}>
+      <MessageSquare className="h-3 w-3" aria-hidden="true" />
+      {commentsCount}
+    </div>
+  );
+}
 
 function BoardDialog({
   board,
@@ -1170,10 +1262,15 @@ function KanbanTaskDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-foreground/30 px-4 py-6 backdrop-blur-sm">
-      <div className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-lg border border-border bg-card p-4 shadow-soft">
-        <DialogHeader title={task ? "Edit task" : "Create task"} onClose={onClose} />
-        <form className="mt-4 space-y-3" onSubmit={(event) => event.preventDefault()}>
+    <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-foreground/30 px-4 py-6 backdrop-blur-sm">
+      <div className={cn(
+        "w-full rounded-lg border border-border bg-card shadow-soft grid",
+        task ? "max-w-4xl grid-cols-1 md:grid-cols-2" : "max-w-xl grid-cols-1"
+      )}>
+        {/* Task Form Section */}
+        <div className="flex flex-col max-h-[92vh] overflow-y-auto p-4">
+          <DialogHeader title={task ? "Edit task" : "Create task"} onClose={onClose} />
+          <form className="mt-4 space-y-3 flex-1" onSubmit={(event) => event.preventDefault()}>
           <label className="block">
             <span className="text-xs font-semibold text-muted-foreground">Title</span>
             <input
@@ -1302,6 +1399,56 @@ function KanbanTaskDialog({
             </Button>
           </div>
         </form>
+        </div>
+
+        {/* Task Comments Section */}
+        {task && (
+          <div className="flex flex-col max-h-[92vh] overflow-y-auto bg-muted/20 border-t md:border-t-0 md:border-l border-border p-4">
+            <div className="flex items-center gap-2 mb-4">
+              <MessageSquare className="h-4 w-4 text-muted-foreground" />
+              <p className="text-sm font-semibold">Comments</p>
+            </div>
+            <div className="flex-1 min-h-0 relative">
+              <ClientSideSuspense fallback={<div className="text-xs text-muted-foreground p-4 text-center">Loading comments...</div>}>
+                <TaskComments taskId={task.id} />
+              </ClientSideSuspense>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TaskComments({ taskId }: { taskId: number }) {
+  const { threads } = useThreads({ query: { metadata: { taskId: String(taskId) } } });
+  const createThread = useCreateThread();
+
+  return (
+    <div className="flex flex-col h-full space-y-4">
+      <div className="flex-1 space-y-4 max-h-[500px] overflow-y-auto pr-2 pb-2">
+        {threads?.length === 0 ? (
+          <p className="text-xs text-muted-foreground text-center py-8">No comments yet. Start the discussion!</p>
+        ) : (
+          threads?.map((thread) => (
+            <div key={thread.id} className="rounded-lg border border-border bg-white shadow-sm overflow-hidden">
+              <Thread thread={thread} className="w-full" />
+            </div>
+          ))
+        )}
+      </div>
+      
+      <div className="sticky bottom-0 bg-white border border-border rounded-lg shadow-sm mt-auto overflow-hidden">
+        <Composer
+          onComposerSubmit={({ body }, event) => {
+            event.preventDefault();
+            createThread({
+              body,
+              metadata: { taskId: String(taskId) }
+            });
+          }}
+          className="w-full"
+        />
       </div>
     </div>
   );
@@ -1319,6 +1466,149 @@ function DialogHeader({ title, onClose }: { title: string; onClose: () => void }
       >
         <X className="h-4 w-4" aria-hidden="true" />
       </button>
+    </div>
+  );
+}
+
+function ShareBoardDialog({
+  board,
+  onClose,
+  onUpdateBoard,
+}: {
+  board: KanbanBoard;
+  onClose: () => void;
+  onUpdateBoard: (board: KanbanBoard) => void;
+}) {
+  const [email, setEmail] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const sharedEmails = board.sharedEmails ?? [];
+
+  async function handleShare(event: React.FormEvent) {
+    event.preventDefault();
+    const cleanEmail = email.trim().toLowerCase();
+    
+    if (!cleanEmail) return;
+    if (sharedEmails.includes(cleanEmail)) {
+      setError("This email is already shared with this board.");
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/kanban/boards/${board.id}/share`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: cleanEmail }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Failed to share board");
+      }
+      
+      onUpdateBoard(payload.board);
+      setEmail("");
+      toast.success("Board shared successfully");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to share board");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleRemoveShare(emailToRemove: string) {
+    setError(null);
+    try {
+      const response = await fetch(`/api/kanban/boards/${board.id}/share`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: emailToRemove }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Failed to remove share");
+      }
+      
+      onUpdateBoard(payload.board);
+      toast.success("Access removed");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to remove access");
+      toast.error("Unable to remove access");
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-foreground/30 px-4 py-6 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-lg border border-border bg-card p-4 shadow-soft">
+        <DialogHeader title="Share Board" onClose={onClose} />
+        
+        <div className="mt-4">
+          <p className="text-xs text-muted-foreground mb-3">
+            Invite others to collaborate on "{board.name}" in real-time.
+          </p>
+          
+          <form onSubmit={handleShare} className="flex gap-2">
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="h-9 w-full rounded-lg border border-input bg-white px-3 text-sm outline-none transition focus:ring-2 focus:ring-ring/30"
+              placeholder="colleague@example.com"
+            />
+            <Button
+              type="submit"
+              className="h-9 rounded-lg bg-emerald-600 text-xs text-white hover:bg-emerald-700"
+              disabled={saving || !email.trim()}
+            >
+              {saving ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : null}
+              Invite
+            </Button>
+          </form>
+          {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
+
+          <div className="mt-6">
+            <p className="text-xs font-semibold text-muted-foreground mb-2">People with access</p>
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              <div className="flex items-center justify-between rounded-lg border border-border bg-muted/40 px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-foreground text-[10px] font-semibold text-background">
+                    O
+                  </div>
+                  <span className="text-sm font-medium">Owner</span>
+                </div>
+                <span className="text-[10px] uppercase text-muted-foreground font-semibold tracking-wider">Owner</span>
+              </div>
+              
+              {sharedEmails.length === 0 ? (
+                <p className="text-xs text-muted-foreground py-2 text-center">Not shared with anyone yet.</p>
+              ) : (
+                sharedEmails.map((sharedEmail: string) => (
+                  <div key={sharedEmail} className="flex items-center justify-between rounded-lg border border-border bg-white px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-[10px] font-semibold text-blue-700">
+                        {sharedEmail.charAt(0).toUpperCase()}
+                      </div>
+                      <span className="text-sm truncate max-w-[200px]" title={sharedEmail}>{sharedEmail}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void handleRemoveShare(sharedEmail)}
+                      className="text-xs text-destructive hover:underline"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
