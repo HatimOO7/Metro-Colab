@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { db, kanbanBoards, kanbanColumns, kanbanTasks } from "@/db";
 import { getBoardWithDetails, getDatabaseUser, getUserBoard } from "@/lib/kanban";
@@ -96,17 +96,29 @@ export async function PATCH(request: Request) {
   }
 
   const now = new Date();
-
-  await Promise.all(
-    orders.flatMap((order) =>
-      order.taskIds.map((taskId, position) =>
-        db
-          .update(kanbanTasks)
-          .set({ columnId: order.columnId, position, updatedAt: now })
-          .where(and(eq(kanbanTasks.id, taskId), eq(kanbanTasks.boardId, boardId)))
-      )
-    )
+  const updates = orders.flatMap((order) =>
+    order.taskIds.map((taskId, position) => ({
+      taskId,
+      columnId: order.columnId,
+      position,
+    }))
   );
+
+  if (updates.length > 0) {
+    const valueRows = updates.map(
+      (update) => sql`(${update.taskId}, ${update.columnId}, ${update.position})`
+    );
+
+    await db.execute(sql`
+      UPDATE kanban_tasks AS t
+      SET
+        column_id = v.column_id::integer,
+        position = v.position::integer,
+        updated_at = ${now}
+      FROM (VALUES ${sql.join(valueRows, sql`, `)}) AS v(id, column_id, position)
+      WHERE t.id = v.id::integer AND t.board_id = ${boardId}
+    `);
+  }
 
   return NextResponse.json({ board: await getBoardWithDetails(boardId, user.id) });
 }

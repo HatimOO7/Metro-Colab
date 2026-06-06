@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import * as React from "react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -122,6 +123,55 @@ function sortColumns(columns: KanbanColumn[]) {
       ...column,
       tasks: [...column.tasks].sort((first, second) => first.position - second.position || first.id - second.id),
     }));
+}
+
+function insertTaskInColumn(board: KanbanBoard, columnId: number, task: KanbanTask): KanbanBoard {
+  return {
+    ...board,
+    columns: board.columns.map((column) => {
+      if (column.id !== columnId) {
+        return column;
+      }
+
+      const tasks = [...column.tasks, { ...task, columnId }];
+      return { ...column, tasks: tasks.map((currentTask, position) => ({ ...currentTask, position })) };
+    }),
+  };
+}
+
+function updateTaskInBoard(board: KanbanBoard, taskId: number, patch: Partial<KanbanTask>): KanbanBoard {
+  return {
+    ...board,
+    columns: board.columns.map((column) => ({
+      ...column,
+      tasks: column.tasks.map((task) => (task.id === taskId ? { ...task, ...patch } : task)),
+    })),
+  };
+}
+
+function removeTaskFromBoard(board: KanbanBoard, taskId: number): KanbanBoard {
+  return {
+    ...board,
+    columns: board.columns.map((column) => {
+      const tasks = column.tasks.filter((task) => task.id !== taskId);
+
+      if (tasks.length === column.tasks.length) {
+        return column;
+      }
+
+      return { ...column, tasks: tasks.map((task, position) => ({ ...task, position })) };
+    }),
+  };
+}
+
+function replaceTempTask(board: KanbanBoard, tempId: number, serverTask: KanbanTask): KanbanBoard {
+  return {
+    ...board,
+    columns: board.columns.map((column) => ({
+      ...column,
+      tasks: column.tasks.map((task) => (task.id === tempId ? { ...serverTask, columnId: column.id } : task)),
+    })),
+  };
 }
 
 async function readPayload(response: Response) {
@@ -251,138 +301,289 @@ export function KanbanBoardPage() {
     }
   }
 
-  async function handleRenameColumn(column: KanbanColumn) {
-    const name = window.prompt("Column name", column.name)?.trim();
+  const handleRenameColumn = React.useCallback(
+    async (column: KanbanColumn) => {
+      const name = window.prompt("Column name", column.name)?.trim();
 
-    if (!name || name === column.name) {
-      return;
-    }
+      if (!name || name === column.name) {
+        return;
+      }
 
-    setActionError(null);
+      setActionError(null);
 
-    try {
-      const response = await fetch(`/api/kanban/columns/${column.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
-      });
-      const payload = await readPayload(response);
-      replaceBoard(payload.board);
-    } catch (renameError) {
-      setActionError(renameError instanceof Error ? renameError.message : "Unable to rename column.");
-    }
-  }
+      try {
+        const response = await fetch(`/api/kanban/columns/${column.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name }),
+        });
+        const payload = await readPayload(response);
+        replaceBoard(payload.board);
+      } catch (renameError) {
+        const message = renameError instanceof Error ? renameError.message : "Unable to rename column.";
+        setActionError(message);
+        toast.error(message);
+      }
+    },
+    [replaceBoard]
+  );
 
-  async function handleDeleteColumn(column: KanbanColumn) {
-    setActionError(null);
+  const handleDeleteColumn = React.useCallback(
+    async (column: KanbanColumn) => {
+      setActionError(null);
 
-    try {
-      const response = await fetch(`/api/kanban/columns/${column.id}`, { method: "DELETE" });
-      const payload = await readPayload(response);
-      replaceBoard(payload.board);
-    } catch (deleteError) {
-      setActionError(deleteError instanceof Error ? deleteError.message : "Unable to delete column.");
-    }
-  }
+      try {
+        const response = await fetch(`/api/kanban/columns/${column.id}`, { method: "DELETE" });
+        const payload = await readPayload(response);
+        replaceBoard(payload.board);
+      } catch (deleteError) {
+        const message = deleteError instanceof Error ? deleteError.message : "Unable to delete column.";
+        setActionError(message);
+        toast.error(message);
+      }
+    },
+    [replaceBoard]
+  );
 
-  async function handleSaveTask(form: TaskForm) {
-    if (!taskDialog || !sortedSelectedBoard) {
-      return;
-    }
+  const openTaskDialog = React.useCallback((columnId: number, task: KanbanTask | null) => {
+    setTaskDialog({ columnId, task });
+  }, []);
 
-    const isEditing = Boolean(taskDialog.task);
-    const endpoint = isEditing ? `/api/kanban/tasks/${taskDialog.task?.id}` : "/api/kanban/tasks";
-    const method = isEditing ? "PATCH" : "POST";
-    setActionError(null);
+  const handleAddTask = React.useCallback(
+    (columnId: number) => {
+      openTaskDialog(columnId, null);
+    },
+    [openTaskDialog]
+  );
 
-    try {
-      const response = await fetch(endpoint, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...form,
-          boardId: sortedSelectedBoard.id,
-          columnId: taskDialog.columnId,
-        }),
-      });
-      const payload = await readPayload(response);
-      replaceBoard(payload.board);
+  const handleSaveTask = React.useCallback(
+    async (form: TaskForm) => {
+      if (!taskDialog || !sortedSelectedBoard) {
+        return;
+      }
+
+      const isEditing = Boolean(taskDialog.task);
+      const endpoint = isEditing ? `/api/kanban/tasks/${taskDialog.task?.id}` : "/api/kanban/tasks";
+      const method = isEditing ? "PATCH" : "POST";
+      const boardId = sortedSelectedBoard.id;
+      const columnId = taskDialog.columnId;
+      const editingTaskId = taskDialog.task?.id ?? null;
+      const tempTaskId = isEditing ? null : -Date.now();
+      let previousBoard: KanbanBoard | null = null;
+
+      setActionError(null);
+      setBoards((currentBoards) =>
+        currentBoards.map((board) => {
+          if (board.id !== boardId) {
+            return board;
+          }
+
+          previousBoard = board;
+
+          if (isEditing && editingTaskId) {
+            return updateTaskInBoard(board, editingTaskId, {
+              title: form.title,
+              description: form.description || null,
+              dueDate: form.dueDate,
+              priority: form.priority,
+              labels: form.labels,
+              syncCalendar: form.syncCalendar,
+              linkNotes: form.linkNotes,
+            });
+          }
+
+          const column = board.columns.find((currentColumn) => currentColumn.id === columnId);
+          const optimisticTask: KanbanTask = {
+            id: tempTaskId!,
+            boardId,
+            columnId,
+            title: form.title,
+            description: form.description || null,
+            dueDate: form.dueDate,
+            priority: form.priority,
+            labels: form.labels,
+            syncCalendar: form.syncCalendar,
+            linkNotes: form.linkNotes,
+            calendarItemId: null,
+            position: column?.tasks.length ?? 0,
+          };
+
+          return insertTaskInColumn(board, columnId, optimisticTask);
+        })
+      );
       setTaskDialog(null);
-    } catch (saveError) {
-      setActionError(saveError instanceof Error ? saveError.message : "Unable to save task.");
-    }
-  }
 
-  async function handleDeleteTask(task: KanbanTask) {
-    setActionError(null);
+      try {
+        const response = await fetch(endpoint, {
+          method,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...form,
+            boardId,
+            columnId,
+          }),
+        });
+        const payload = await readPayload(response);
+        const serverTask = payload.task as KanbanTask;
 
-    try {
-      const response = await fetch(`/api/kanban/tasks/${task.id}`, { method: "DELETE" });
-      const payload = await readPayload(response);
-      replaceBoard(payload.board);
-    } catch (deleteError) {
-      setActionError(deleteError instanceof Error ? deleteError.message : "Unable to delete task.");
-    }
-  }
+        setBoards((currentBoards) =>
+          currentBoards.map((board) => {
+            if (board.id !== boardId) {
+              return board;
+            }
 
-  async function handleTaskDrop(targetColumn: KanbanColumn) {
-    if (!sortedSelectedBoard || !draggingTaskId) {
-      return;
-    }
+            if (isEditing && editingTaskId) {
+              return updateTaskInBoard(board, editingTaskId, serverTask);
+            }
 
-    const sourceColumn = sortedSelectedBoard.columns.find((column) =>
-      column.tasks.some((task) => task.id === draggingTaskId)
-    );
-    const draggedTask = sourceColumn?.tasks.find((task) => task.id === draggingTaskId);
+            if (tempTaskId) {
+              return replaceTempTask(board, tempTaskId, serverTask);
+            }
 
-    if (!sourceColumn || !draggedTask) {
-      return;
-    }
+            return board;
+          })
+        );
+      } catch (saveError) {
+        if (previousBoard) {
+          replaceBoard(previousBoard);
+        }
 
-    if (sourceColumn.id === targetColumn.id) {
+        const message = saveError instanceof Error ? saveError.message : "Unable to save task.";
+        setActionError(message);
+        toast.error(message);
+      }
+    },
+    [replaceBoard, sortedSelectedBoard, taskDialog]
+  );
+
+  const handleDeleteTask = React.useCallback(
+    async (task: KanbanTask) => {
+      if (!sortedSelectedBoard) {
+        return;
+      }
+
+      const boardId = sortedSelectedBoard.id;
+      let previousBoard: KanbanBoard | null = null;
+
+      setActionError(null);
+      setBoards((currentBoards) =>
+        currentBoards.map((board) => {
+          if (board.id !== boardId) {
+            return board;
+          }
+
+          previousBoard = board;
+          return removeTaskFromBoard(board, task.id);
+        })
+      );
+
+      try {
+        const response = await fetch(`/api/kanban/tasks/${task.id}`, { method: "DELETE" });
+        await readPayload(response);
+      } catch (deleteError) {
+        if (previousBoard) {
+          replaceBoard(previousBoard);
+        }
+
+        const message = deleteError instanceof Error ? deleteError.message : "Unable to delete task.";
+        setActionError(message);
+        toast.error(message);
+      }
+    },
+    [replaceBoard, sortedSelectedBoard]
+  );
+
+  const handleTaskDrop = React.useCallback(
+    async (targetColumnId: number) => {
+      if (!sortedSelectedBoard || !draggingTaskId) {
+        return;
+      }
+
+      const boardId = sortedSelectedBoard.id;
+      const activeTaskId = draggingTaskId;
+      let previousBoard: KanbanBoard | null = null;
+      let reorderPayload: {
+        boardId: number;
+        columns: Array<{ columnId: number; taskIds: number[] }>;
+      } | null = null;
+
+      setBoards((currentBoards) =>
+        currentBoards.map((board) => {
+          if (board.id !== boardId) {
+            return board;
+          }
+
+          previousBoard = board;
+          const sortedColumns = sortColumns(board.columns);
+          const sourceColumn = sortedColumns.find((column) =>
+            column.tasks.some((task) => task.id === activeTaskId)
+          );
+          const draggedTask = sourceColumn?.tasks.find((task) => task.id === activeTaskId);
+
+          if (!sourceColumn || !draggedTask || sourceColumn.id === targetColumnId) {
+            return board;
+          }
+
+          const nextColumns = sortedColumns.map((column) => {
+            const remainingTasks = column.tasks.filter((task) => task.id !== activeTaskId);
+            const nextTasks =
+              column.id === targetColumnId
+                ? [...remainingTasks, { ...draggedTask, columnId: targetColumnId }]
+                : remainingTasks;
+
+            return {
+              ...column,
+              tasks: nextTasks.map((task, position) => ({ ...task, position })),
+            };
+          });
+
+          reorderPayload = {
+            boardId,
+            columns: nextColumns
+              .filter((column) => column.id === sourceColumn.id || column.id === targetColumnId)
+              .map((column) => ({
+                columnId: column.id,
+                taskIds: column.tasks.map((task) => task.id),
+              })),
+          };
+
+          return { ...board, columns: nextColumns };
+        })
+      );
       setDraggingTaskId(null);
-      return;
-    }
+      setActionError(null);
 
-    const nextColumns = sortedSelectedBoard.columns.map((column) => {
-      const remainingTasks = column.tasks.filter((task) => task.id !== draggingTaskId);
-      const nextTasks =
-        column.id === targetColumn.id
-          ? [...remainingTasks, { ...draggedTask, columnId: targetColumn.id }]
-          : remainingTasks;
+      if (!reorderPayload) {
+        return;
+      }
 
-      return {
-        ...column,
-        tasks: nextTasks.map((task, position) => ({ ...task, position })),
-      };
-    });
-    const optimisticBoard = { ...sortedSelectedBoard, columns: nextColumns };
+      try {
+        const response = await fetch("/api/kanban/tasks/reorder", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(reorderPayload),
+        });
+        await readPayload(response);
+      } catch (moveError) {
+        if (previousBoard) {
+          replaceBoard(previousBoard);
+        }
 
-    replaceBoard(optimisticBoard);
+        const message = moveError instanceof Error ? moveError.message : "Unable to move task.";
+        setActionError(message);
+        toast.error(message);
+      }
+    },
+    [draggingTaskId, replaceBoard, sortedSelectedBoard]
+  );
+
+  const handleDragStart = React.useCallback((taskId: number) => {
+    setDraggingTaskId(taskId);
+  }, []);
+
+  const handleDragEnd = React.useCallback(() => {
     setDraggingTaskId(null);
-    setActionError(null);
-
-    try {
-      const response = await fetch("/api/kanban/tasks/reorder", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          boardId: sortedSelectedBoard.id,
-          columns: nextColumns
-            .filter((column) => column.id === sourceColumn.id || column.id === targetColumn.id)
-            .map((column) => ({
-              columnId: column.id,
-              taskIds: column.tasks.map((task) => task.id),
-            })),
-        }),
-      });
-      const payload = await readPayload(response);
-      replaceBoard(payload.board);
-    } catch (moveError) {
-      setActionError(moveError instanceof Error ? moveError.message : "Unable to move task.");
-      replaceBoard(sortedSelectedBoard);
-    }
-  }
+  }, []);
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 px-4 py-5 lg:px-6">
@@ -515,21 +716,26 @@ export function KanbanBoardPage() {
 
               <div className="mt-4 min-w-0 overflow-x-auto pb-2">
                 <div className="flex min-h-[460px] w-max gap-3 pr-2">
-                  {sortedSelectedBoard.columns.map((column) => (
-                    <KanbanColumnView
-                      key={column.id}
-                      column={column}
-                      onAddTask={() => setTaskDialog({ columnId: column.id, task: null })}
-                      onRename={() => void handleRenameColumn(column)}
-                      onDelete={() => void handleDeleteColumn(column)}
-                      onEditTask={(task) => setTaskDialog({ columnId: column.id, task })}
-                      onDeleteTask={(task) => void handleDeleteTask(task)}
-                      onDragStart={(task) => setDraggingTaskId(task.id)}
-                      onDragEnd={() => setDraggingTaskId(null)}
-                      onDrop={() => void handleTaskDrop(column)}
-                      draggingTaskId={draggingTaskId}
-                    />
-                  ))}
+                  {sortedSelectedBoard.columns.map((column) => {
+                    const isDragSource = column.tasks.some((task) => task.id === draggingTaskId);
+                    const isDropTarget = draggingTaskId !== null && !isDragSource;
+
+                    return (
+                      <KanbanColumnView
+                        key={column.id}
+                        column={column}
+                        isDropTarget={isDropTarget}
+                        onAddTask={handleAddTask}
+                        onRename={handleRenameColumn}
+                        onDelete={handleDeleteColumn}
+                        onEditTask={openTaskDialog}
+                        onDeleteTask={handleDeleteTask}
+                        onDragStart={handleDragStart}
+                        onDragEnd={handleDragEnd}
+                        onDrop={handleTaskDrop}
+                      />
+                    );
+                  })}
                 </div>
               </div>
             </>
@@ -561,8 +767,9 @@ export function KanbanBoardPage() {
   );
 }
 
-function KanbanColumnView({
+const KanbanColumnView = React.memo(function KanbanColumnView({
   column,
+  isDropTarget,
   onAddTask,
   onRename,
   onDelete,
@@ -571,29 +778,28 @@ function KanbanColumnView({
   onDragStart,
   onDragEnd,
   onDrop,
-  draggingTaskId,
 }: {
   column: KanbanColumn;
-  onAddTask: () => void;
-  onRename: () => void;
-  onDelete: () => void;
-  onEditTask: (task: KanbanTask) => void;
+  isDropTarget: boolean;
+  onAddTask: (columnId: number) => void;
+  onRename: (column: KanbanColumn) => void;
+  onDelete: (column: KanbanColumn) => void;
+  onEditTask: (columnId: number, task: KanbanTask) => void;
   onDeleteTask: (task: KanbanTask) => void;
-  onDragStart: (task: KanbanTask) => void;
+  onDragStart: (taskId: number) => void;
   onDragEnd: () => void;
-  onDrop: () => void;
-  draggingTaskId: number | null;
+  onDrop: (columnId: number) => void;
 }) {
   return (
     <div
       className={cn(
         "flex h-full w-[280px] shrink-0 flex-col rounded-lg border border-border bg-white/85",
-        draggingTaskId && "ring-1 ring-emerald-200"
+        isDropTarget && "ring-1 ring-emerald-200"
       )}
       onDragOver={(event) => event.preventDefault()}
       onDrop={(event) => {
         event.preventDefault();
-        onDrop();
+        onDrop(column.id);
       }}
     >
       <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2.5">
@@ -604,7 +810,7 @@ function KanbanColumnView({
         <div className="flex items-center gap-1">
           <button
             type="button"
-            onClick={onRename}
+            onClick={() => onRename(column)}
             className="grid h-7 w-7 place-items-center rounded-lg text-muted-foreground transition hover:bg-muted hover:text-foreground"
             aria-label={`Rename ${column.name}`}
             title="Rename column"
@@ -613,7 +819,7 @@ function KanbanColumnView({
           </button>
           <button
             type="button"
-            onClick={onDelete}
+            onClick={() => onDelete(column)}
             className="grid h-7 w-7 place-items-center rounded-lg text-muted-foreground transition hover:bg-red-50 hover:text-destructive"
             aria-label={`Delete ${column.name}`}
             title="Delete column"
@@ -628,9 +834,9 @@ function KanbanColumnView({
           <KanbanTaskCard
             key={task.id}
             task={task}
-            onEdit={() => onEditTask(task)}
+            onEdit={() => onEditTask(column.id, task)}
             onDelete={() => onDeleteTask(task)}
-            onDragStart={() => onDragStart(task)}
+            onDragStart={() => onDragStart(task.id)}
             onDragEnd={onDragEnd}
           />
         ))}
@@ -643,16 +849,21 @@ function KanbanColumnView({
       </div>
 
       <div className="border-t border-border p-2.5">
-        <Button type="button" variant="outline" className="h-9 w-full rounded-lg bg-white text-xs" onClick={onAddTask}>
+        <Button
+          type="button"
+          variant="outline"
+          className="h-9 w-full rounded-lg bg-white text-xs"
+          onClick={() => onAddTask(column.id)}
+        >
           <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
           Add task
         </Button>
       </div>
     </div>
   );
-}
+});
 
-function KanbanTaskCard({
+const KanbanTaskCard = React.memo(function KanbanTaskCard({
   task,
   onEdit,
   onDelete,
@@ -741,7 +952,7 @@ function KanbanTaskCard({
       </div>
     </div>
   );
-}
+});
 
 function BoardDialog({
   board,

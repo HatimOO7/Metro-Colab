@@ -1,9 +1,11 @@
+import { after } from "next/server";
 import { NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
-import { db, calendarItems, kanbanTasks } from "@/db";
+import { db, kanbanTasks } from "@/db";
 import {
   allowedKanbanPriorities,
+  deleteTaskCalendarItem,
   getBoardWithDetails,
   getDatabaseUser,
   getUserColumn,
@@ -117,10 +119,17 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 
   const [task] = await db.update(kanbanTasks).set(updates).where(eq(kanbanTasks.id, taskId)).returning();
-  const syncedTask = await syncTaskToCalendar(task, user.id);
+
+  after(async () => {
+    try {
+      await syncTaskToCalendar(task, user.id);
+    } catch (syncError) {
+      console.error("Kanban calendar sync failed after task update", syncError);
+    }
+  });
 
   return NextResponse.json({
-    task: syncedTask,
+    task,
     board: await getBoardWithDetails(row.task.boardId, user.id),
   });
 }
@@ -144,13 +153,19 @@ export async function DELETE(_request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Task not found" }, { status: 404 });
   }
 
-  if (row.task.calendarItemId) {
-    await db
-      .delete(calendarItems)
-      .where(and(eq(calendarItems.id, row.task.calendarItemId), eq(calendarItems.userId, user.id)));
-  }
+  const calendarItemId = row.task.calendarItemId;
 
   const [task] = await db.delete(kanbanTasks).where(eq(kanbanTasks.id, taskId)).returning();
+
+  if (calendarItemId) {
+    after(async () => {
+      try {
+        await deleteTaskCalendarItem(calendarItemId, user.id);
+      } catch (syncError) {
+        console.error("Kanban calendar cleanup failed after task delete", syncError);
+      }
+    });
+  }
 
   return NextResponse.json({ task, board: await getBoardWithDetails(row.task.boardId, user.id) });
 }

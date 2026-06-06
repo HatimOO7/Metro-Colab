@@ -118,72 +118,121 @@ function hydrateBoards(boards: KanbanBoardRow[], columns: KanbanColumnRow[], tas
 
   return boards.map((board) => ({
     ...board,
-    columns: columnsByBoard.get(board.id) ?? [],
+    columns: (columnsByBoard.get(board.id) ?? []).sort(
+      (first, second) => first.position - second.position || first.id - second.id
+    ),
   }));
 }
 
-export async function getBoardWithDetails(boardId: number, userId: number) {
-  const board = await getUserBoard(boardId, userId);
+type JoinRow = {
+  board: KanbanBoardRow;
+  column: KanbanColumnRow | null;
+  task: KanbanTaskRow | null;
+};
 
-  if (!board) {
+function hydrateFromJoinRows(rows: JoinRow[]) {
+  if (rows.length === 0) {
+    return [];
+  }
+
+  const boardsMap = new Map<number, KanbanBoardRow>();
+  const columnsMap = new Map<number, KanbanColumnRow>();
+  const tasksMap = new Map<number, KanbanTaskRow>();
+
+  for (const row of rows) {
+    boardsMap.set(row.board.id, row.board);
+
+    if (row.column) {
+      columnsMap.set(row.column.id, row.column);
+    }
+
+    if (row.task) {
+      tasksMap.set(row.task.id, row.task);
+    }
+  }
+
+  const boards = [...boardsMap.values()].sort(
+    (first, second) => first.createdAt.getTime() - second.createdAt.getTime()
+  );
+  const columns = [...columnsMap.values()].sort(
+    (first, second) => first.position - second.position || first.id - second.id
+  );
+  const tasks = [...tasksMap.values()].sort(
+    (first, second) =>
+      first.columnId - second.columnId ||
+      first.position - second.position ||
+      first.id - second.id
+  );
+
+  return hydrateBoards(boards, columns, tasks);
+}
+
+export async function getBoardWithDetails(boardId: number, userId: number) {
+  const rows = await db
+    .select({
+      board: kanbanBoards,
+      column: kanbanColumns,
+      task: kanbanTasks,
+    })
+    .from(kanbanBoards)
+    .leftJoin(kanbanColumns, eq(kanbanColumns.boardId, kanbanBoards.id))
+    .leftJoin(kanbanTasks, eq(kanbanTasks.boardId, kanbanBoards.id))
+    .where(and(eq(kanbanBoards.id, boardId), eq(kanbanBoards.userId, userId)))
+    .orderBy(
+      asc(kanbanColumns.position),
+      asc(kanbanColumns.createdAt),
+      asc(kanbanTasks.columnId),
+      asc(kanbanTasks.position),
+      asc(kanbanTasks.createdAt)
+    );
+
+  if (rows.length === 0) {
     return null;
   }
 
-  const columns = await db
-    .select()
-    .from(kanbanColumns)
-    .where(eq(kanbanColumns.boardId, boardId))
-    .orderBy(asc(kanbanColumns.position), asc(kanbanColumns.createdAt));
-  const tasks = await db
-    .select()
-    .from(kanbanTasks)
-    .where(eq(kanbanTasks.boardId, boardId))
-    .orderBy(asc(kanbanTasks.columnId), asc(kanbanTasks.position), asc(kanbanTasks.createdAt));
-
-  return hydrateBoards([board], columns, tasks)[0];
+  return hydrateFromJoinRows(rows)[0] ?? null;
 }
 
 export async function getBoardsWithDetails(userId: number) {
-  const boards = await db
-    .select()
+  const rows = await db
+    .select({
+      board: kanbanBoards,
+      column: kanbanColumns,
+      task: kanbanTasks,
+    })
     .from(kanbanBoards)
+    .leftJoin(kanbanColumns, eq(kanbanColumns.boardId, kanbanBoards.id))
+    .leftJoin(kanbanTasks, eq(kanbanTasks.boardId, kanbanBoards.id))
     .where(eq(kanbanBoards.userId, userId))
-    .orderBy(asc(kanbanBoards.createdAt));
-  const columns = await db
-    .select()
-    .from(kanbanColumns)
-    .innerJoin(kanbanBoards, eq(kanbanColumns.boardId, kanbanBoards.id))
-    .where(eq(kanbanBoards.userId, userId))
-    .orderBy(asc(kanbanColumns.position), asc(kanbanColumns.createdAt));
-  const tasks = await db
-    .select()
-    .from(kanbanTasks)
-    .innerJoin(kanbanBoards, eq(kanbanTasks.boardId, kanbanBoards.id))
-    .where(eq(kanbanBoards.userId, userId))
-    .orderBy(asc(kanbanTasks.position), asc(kanbanTasks.createdAt));
+    .orderBy(
+      asc(kanbanBoards.createdAt),
+      asc(kanbanColumns.position),
+      asc(kanbanColumns.createdAt),
+      asc(kanbanTasks.position),
+      asc(kanbanTasks.createdAt)
+    );
 
-  return hydrateBoards(
-    boards,
-    columns.map((row) => row.kanban_columns),
-    tasks.map((row) => row.kanban_tasks)
-  );
+  return hydrateFromJoinRows(rows);
 }
 
 export async function syncTaskToCalendar(task: KanbanTask, userId: number) {
+  const now = new Date();
+
   if (!task.syncCalendar) {
-    if (task.calendarItemId) {
-      await db
-        .delete(calendarItems)
-        .where(and(eq(calendarItems.id, task.calendarItemId), eq(calendarItems.userId, userId)));
-      const [updatedTask] = await db
-        .update(kanbanTasks)
-        .set({ calendarItemId: null, updatedAt: new Date() })
-        .where(eq(kanbanTasks.id, task.id))
-        .returning();
-      return updatedTask;
+    if (!task.calendarItemId) {
+      return task;
     }
 
-    return task;
+    await db
+      .delete(calendarItems)
+      .where(and(eq(calendarItems.id, task.calendarItemId), eq(calendarItems.userId, userId)));
+    const [updatedTask] = await db
+      .update(kanbanTasks)
+      .set({ calendarItemId: null, updatedAt: now })
+      .where(eq(kanbanTasks.id, task.id))
+      .returning();
+
+    return updatedTask ?? task;
   }
 
   const category = priorityCategory[task.priority as keyof typeof priorityCategory] ?? priorityCategory.Medium;
@@ -197,7 +246,7 @@ export async function syncTaskToCalendar(task: KanbanTask, userId: number) {
     scheduledDate: task.dueDate,
     scheduledTime: null,
     status: "scheduled",
-    updatedAt: new Date(),
+    updatedAt: now,
   };
 
   if (task.calendarItemId) {
@@ -215,9 +264,15 @@ export async function syncTaskToCalendar(task: KanbanTask, userId: number) {
   const [item] = await db.insert(calendarItems).values(calendarInput).returning();
   const [updatedTask] = await db
     .update(kanbanTasks)
-    .set({ calendarItemId: item.id, updatedAt: new Date() })
+    .set({ calendarItemId: item.id, updatedAt: now })
     .where(eq(kanbanTasks.id, task.id))
     .returning();
 
-  return updatedTask;
+  return updatedTask ?? task;
+}
+
+export async function deleteTaskCalendarItem(calendarItemId: number, userId: number) {
+  await db
+    .delete(calendarItems)
+    .where(and(eq(calendarItems.id, calendarItemId), eq(calendarItems.userId, userId)));
 }
