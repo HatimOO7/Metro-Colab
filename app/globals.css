@@ -150,6 +150,15 @@
   --shadow-soft: 0 10px 30px hsl(224 26% 15% / 0.08);
 }
 
+/* Whiteboard / Excalidraw full-height canvas */
+.excalidraw-wrapper {
+  height: 100% !important;
+}
+
+.excalidraw {
+  --theme-filter: none;
+}
+
 /* Liveblocks overrides for Shadcn Sheet (z-50) */
 .lb-root {
   --lb-z-index: 9999;

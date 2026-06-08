@@ -135,3 +135,23 @@ export const notes = pgTable(
 export type Note = typeof notes.$inferSelect;
 export type NewNote = typeof notes.$inferInsert;
 
+export const whiteboards = pgTable(
+  "whiteboards",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    color: text("color").notNull(),
+    sharedEmails: jsonb("shared_emails").$type<string[]>().notNull().default([]),
+    pendingEmails: jsonb("pending_emails").$type<string[]>().notNull().default([]),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [index("whiteboards_user_idx").on(table.userId)]
+);
+
+export type Whiteboard = typeof whiteboards.$inferSelect;
+export type NewWhiteboard = typeof whiteboards.$inferInsert;
+

@@ -31,6 +31,8 @@ import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { KanbanBoardPage } from "@/components/kanban-board";
 import { NotesPage } from "@/components/notes-page";
+import { IncomingCallProvider } from "@/components/whiteboard/incoming-call-provider";
+import { WhiteboardPage } from "@/components/whiteboard-page";
 import {
   collectKanbanSearchResults,
   filterCalendarItems,
@@ -233,7 +235,9 @@ export function AppShell() {
       onNavigateToKanban={() => setActiveItem("Task / Kanban")}
       onNavigateToCalendar={() => setActiveItem("Calendar")}
     >
-      <AppShellContent activeItem={activeItem} setActiveItem={setActiveItem} />
+      <IncomingCallProvider onNavigateToWhiteboard={() => setActiveItem("Whiteboard")}>
+        <AppShellContent activeItem={activeItem} setActiveItem={setActiveItem} />
+      </IncomingCallProvider>
     </WorkspaceDataProvider>
   );
 }
@@ -249,6 +253,7 @@ function AppShellContent({
   const { requestCreateBoard } = useWorkspaceData();
   const isCalendar = activeItem === "Calendar";
   const isKanban = activeItem === "Task / Kanban";
+  const isWhiteboard = activeItem === "Whiteboard";
 
   const handleNewSpace = () => {
     setActiveItem("Task / Kanban");
@@ -346,14 +351,16 @@ function AppShellContent({
           </div>
         </aside>
 
-        <section className="flex min-w-0 flex-1 flex-col">
-          {activeItem !== "Notes" && <AppHeader activeItem={activeItem} onNewSpace={handleNewSpace} />}
+        <section className={cn("flex min-w-0 flex-1 flex-col", isWhiteboard && "min-h-0 overflow-hidden")}>
+          {activeItem !== "Notes" && !isWhiteboard && <AppHeader activeItem={activeItem} onNewSpace={handleNewSpace} />}
           {isCalendar ? (
             <CalendarPlanner />
           ) : isKanban ? (
             <KanbanBoardPage />
           ) : activeItem === "Notes" ? (
             <NotesPage />
+          ) : isWhiteboard ? (
+            <WhiteboardPage />
           ) : (
             <DashboardContent />
           )}
@@ -519,12 +526,21 @@ function AppHeader({ activeItem, onNewSpace }: { activeItem: string; onNewSpace:
 }
 
 function DashboardContent() {
-  const { pendingInvitations, acceptInvitation, rejectInvitation } = useWorkspaceData();
+  const {
+    pendingInvitations,
+    acceptInvitation,
+    rejectInvitation,
+    pendingWhiteboardInvitations,
+    acceptWhiteboardInvitation,
+    rejectWhiteboardInvitation,
+  } = useWorkspaceData();
+
+  const hasInvitations = pendingInvitations.length > 0 || pendingWhiteboardInvitations.length > 0;
 
   return (
     <div className="grid gap-4 px-4 py-5 lg:grid-cols-[1.5fr_1fr] lg:px-6">
       <section className="space-y-4">
-        {pendingInvitations.length > 0 && (
+        {hasInvitations && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 shadow-soft">
             <div className="flex items-center justify-between">
               <div>
@@ -536,12 +552,14 @@ function DashboardContent() {
             </div>
             <div className="mt-4 space-y-3">
               {pendingInvitations.map((board) => (
-                <div key={board.id} className="flex items-center justify-between rounded-lg border border-amber-200 bg-white p-3 shadow-sm">
+                <div key={`kanban-${board.id}`} className="flex items-center justify-between rounded-lg border border-amber-200 bg-white p-3 shadow-sm">
                   <div className="flex items-center gap-3 min-w-0">
                     <span className="h-4 w-4 shrink-0 rounded-full" style={{ backgroundColor: board.color }} />
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold text-foreground">{board.name}</p>
-                      <p className="truncate text-[10px] text-muted-foreground">Invited by {board.ownerEmail || "Owner"}</p>
+                      <p className="truncate text-[10px] text-muted-foreground">
+                        Kanban · Invited by {board.ownerEmail || "Owner"}
+                      </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -557,6 +575,36 @@ function DashboardContent() {
                       type="button"
                       className="h-8 rounded-md bg-emerald-600 text-xs text-white hover:bg-emerald-700"
                       onClick={() => void acceptInvitation(board.id)}
+                    >
+                      Accept
+                    </Button>
+                  </div>
+                </div>
+              ))}
+              {pendingWhiteboardInvitations.map((board) => (
+                <div key={`whiteboard-${board.id}`} className="flex items-center justify-between rounded-lg border border-amber-200 bg-white p-3 shadow-sm">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="h-4 w-4 shrink-0 rounded-full" style={{ backgroundColor: board.color }} />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-foreground">{board.name}</p>
+                      <p className="truncate text-[10px] text-muted-foreground">
+                        Whiteboard · Invited by {board.ownerName || board.ownerEmail || "Owner"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-8 rounded-md bg-white text-xs hover:bg-red-50 hover:text-destructive hover:border-red-200"
+                      onClick={() => void rejectWhiteboardInvitation(board.id)}
+                    >
+                      Decline
+                    </Button>
+                    <Button
+                      type="button"
+                      className="h-8 rounded-md bg-emerald-600 text-xs text-white hover:bg-emerald-700"
+                      onClick={() => void acceptWhiteboardInvitation(board.id)}
                     >
                       Accept
                     </Button>

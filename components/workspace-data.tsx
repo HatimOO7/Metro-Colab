@@ -51,6 +51,14 @@ export type KanbanBoard = {
   ownerEmail?: string;
 };
 
+export type WhiteboardInvitation = {
+  id: number;
+  name: string;
+  color: string;
+  ownerEmail?: string;
+  ownerName?: string;
+};
+
 export type KanbanSearchResult = {
   board: KanbanBoard;
   column: KanbanColumn;
@@ -100,6 +108,13 @@ type WorkspaceDataContextValue = {
   acceptInvitation: (boardId: number) => Promise<void>;
   rejectInvitation: (boardId: number) => Promise<void>;
   reloadInvitations: () => Promise<void>;
+  pendingWhiteboardInvitations: WhiteboardInvitation[];
+  acceptWhiteboardInvitation: (boardId: number) => Promise<void>;
+  rejectWhiteboardInvitation: (boardId: number) => Promise<void>;
+  reloadWhiteboardInvitations: () => Promise<void>;
+  pendingWhiteboardSelection: number | null;
+  requestWhiteboardSelection: (boardId: number) => void;
+  clearWhiteboardSelection: () => void;
 };
 
 const WorkspaceDataContext = React.createContext<WorkspaceDataContextValue | null>(null);
@@ -141,6 +156,8 @@ export function WorkspaceDataProvider({
   const [kanbanError, setKanbanError] = React.useState<string | null>(null);
   
   const [pendingInvitations, setPendingInvitations] = React.useState<KanbanBoard[]>([]);
+  const [pendingWhiteboardInvitations, setPendingWhiteboardInvitations] = React.useState<WhiteboardInvitation[]>([]);
+  const [pendingWhiteboardSelection, setPendingWhiteboardSelection] = React.useState<number | null>(null);
 
   const calendarReadyRef = React.useRef(false);
   const kanbanReadyRef = React.useRef(false);
@@ -199,6 +216,16 @@ export function WorkspaceDataProvider({
     }
   }, []);
 
+  const reloadWhiteboardInvitations = React.useCallback(async () => {
+    try {
+      const response = await fetch("/api/whiteboards/invitations", { cache: "no-store" });
+      const payload = await readJson(response);
+      setPendingWhiteboardInvitations(payload.boards ?? []);
+    } catch (error) {
+      console.error("Failed to load whiteboard invitations", error);
+    }
+  }, []);
+
   const acceptInvitation = React.useCallback(async (boardId: number) => {
     await fetch(`/api/kanban/invitations/${boardId}/accept`, { method: "POST" });
     await reloadInvitations();
@@ -210,11 +237,30 @@ export function WorkspaceDataProvider({
     await reloadInvitations();
   }, [reloadInvitations]);
 
+  const acceptWhiteboardInvitation = React.useCallback(async (boardId: number) => {
+    await fetch(`/api/whiteboards/invitations/${boardId}/accept`, { method: "POST" });
+    await reloadWhiteboardInvitations();
+  }, [reloadWhiteboardInvitations]);
+
+  const rejectWhiteboardInvitation = React.useCallback(async (boardId: number) => {
+    await fetch(`/api/whiteboards/invitations/${boardId}/reject`, { method: "POST" });
+    await reloadWhiteboardInvitations();
+  }, [reloadWhiteboardInvitations]);
+
+  const requestWhiteboardSelection = React.useCallback((boardId: number) => {
+    setPendingWhiteboardSelection(boardId);
+  }, []);
+
+  const clearWhiteboardSelection = React.useCallback(() => {
+    setPendingWhiteboardSelection(null);
+  }, []);
+
   React.useEffect(() => {
     void reloadCalendarItems();
     void reloadKanbanBoards();
     void reloadInvitations();
-  }, [reloadCalendarItems, reloadKanbanBoards, reloadInvitations]);
+    void reloadWhiteboardInvitations();
+  }, [reloadCalendarItems, reloadKanbanBoards, reloadInvitations, reloadWhiteboardInvitations]);
 
   const createCalendarItem = React.useCallback(async (input: Omit<CalendarItem, "id">) => {
     const response = await fetch("/api/calendar-items", {
@@ -386,6 +432,13 @@ export function WorkspaceDataProvider({
       acceptInvitation,
       rejectInvitation,
       reloadInvitations,
+      pendingWhiteboardInvitations,
+      acceptWhiteboardInvitation,
+      rejectWhiteboardInvitation,
+      reloadWhiteboardInvitations,
+      pendingWhiteboardSelection,
+      requestWhiteboardSelection,
+      clearWhiteboardSelection,
     }),
     [
       searchQuery,
@@ -419,6 +472,13 @@ export function WorkspaceDataProvider({
       acceptInvitation,
       rejectInvitation,
       reloadInvitations,
+      pendingWhiteboardInvitations,
+      acceptWhiteboardInvitation,
+      rejectWhiteboardInvitation,
+      reloadWhiteboardInvitations,
+      pendingWhiteboardSelection,
+      requestWhiteboardSelection,
+      clearWhiteboardSelection,
     ]
   );
 

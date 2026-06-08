@@ -5,8 +5,8 @@ import "./globals.css";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Next.js Premium Startup Boilerplate",
-  description: "Created using the ultimate interactive Next.js stack generator CLI.",
+  title: "Metro Colab",
+  description: "Created for the teachers and students of Metropolitan University",
 };
 
 export default async function RootLayout({
