@@ -88,6 +88,27 @@ ${text}`;
   if (!response.ok) {
     const errorBody = await response.text().catch(() => "");
     console.error("Gemini API call failed:", response.status, errorBody);
+
+    if (response.status === 503) {
+      let friendlyMessage =
+        "The AI service is temporarily unavailable. Please try again in a moment.";
+
+      try {
+        const parsed = JSON.parse(errorBody) as {
+          error?: { message?: string };
+        };
+        if (parsed.error?.message) {
+          friendlyMessage = parsed.error.message;
+        }
+      } catch {
+        // Use default friendly message when Gemini returns non-JSON error bodies.
+      }
+
+      const error = new Error(friendlyMessage) as Error & { status?: number };
+      error.status = 503;
+      throw error;
+    }
+
     throw new Error(`Gemini API error (${response.status})`);
   }
 
@@ -189,9 +210,11 @@ export async function POST(request: Request) {
         return NextResponse.json({ refinedText });
       } catch (error) {
         console.error("Gemini refinement failed:", error);
+        const status =
+          error instanceof Error && "status" in error && error.status === 503 ? 503 : 502;
         return NextResponse.json(
           { error: error instanceof Error ? error.message : "AI refinement failed" },
-          { status: 502 }
+          { status }
         );
       }
     }

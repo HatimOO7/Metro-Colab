@@ -45,6 +45,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import debounce from "lodash/debounce";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -105,8 +106,6 @@ export function NotesPage() {
   const activeNote = React.useMemo(() => notes.find((n) => n.id === activeNoteId) || null, [notes, activeNoteId]);
 
   const lastSavedContent = React.useRef("");
-  const saveTimerRef = React.useRef<NodeJS.Timeout | null>(null);
-  const titleSaveTimerRef = React.useRef<NodeJS.Timeout | null>(null);
   const isSettingContent = React.useRef(false);
   const activeNoteIdRef = React.useRef<number | null>(null);
 
@@ -194,13 +193,25 @@ export function NotesPage() {
     }
   }, []);
 
-  // Cleanup save timer on unmount
+  const debouncedSaveNoteContent = React.useMemo(
+    () =>
+      debounce((noteId: number, content: string, title?: string) => {
+        if (title === undefined && content === lastSavedContent.current) return;
+        void saveNoteContent(noteId, content, title);
+      }, 1500),
+    [saveNoteContent]
+  );
+
+  const debouncedSaveNoteContentRef = React.useRef(debouncedSaveNoteContent);
+  React.useEffect(() => {
+    debouncedSaveNoteContentRef.current = debouncedSaveNoteContent;
+  }, [debouncedSaveNoteContent]);
+
   React.useEffect(() => {
     return () => {
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-      if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current);
+      debouncedSaveNoteContent.cancel();
     };
-  }, []);
+  }, [debouncedSaveNoteContent]);
 
   // Editor initialization
   const editor = useEditor({
@@ -271,13 +282,7 @@ export function NotesPage() {
       const noteId = activeNoteIdRef.current;
       if (!noteId) return;
 
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-
-      saveTimerRef.current = setTimeout(() => {
-        const htmlContent = editor.getHTML();
-        if (htmlContent === lastSavedContent.current) return;
-        saveNoteContent(noteId, htmlContent);
-      }, 1000);
+      debouncedSaveNoteContentRef.current(noteId, editor.getHTML());
     },
   });
 
@@ -288,13 +293,14 @@ export function NotesPage() {
     // Immediately save previous unsaved content if any
     const previousNoteId = previousNoteIdRef.current;
     if (previousNoteId && previousNoteId !== activeNote.id) {
+      debouncedSaveNoteContent.flush();
       const html = editor.getHTML();
       if (html !== lastSavedContent.current) {
-        saveNoteContent(previousNoteId, html);
+        void saveNoteContent(previousNoteId, html);
       }
     }
 
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    debouncedSaveNoteContent.cancel();
 
     isSettingContent.current = true;
     editor.commands.setContent(activeNote.content);
@@ -470,15 +476,30 @@ export function NotesPage() {
         body: JSON.stringify({ text: textToRefine, action, tone }),
       });
 
-      const data = await res.json().catch(() => ({}));
+      let data: { error?: string; refinedText?: string } = {};
+      try {
+        data = await res.json();
+      } catch {
+        data = {};
+      }
 
       if (!res.ok) {
-        throw new Error(typeof data.error === "string" ? data.error : "AI Refinement failed");
+        const message =
+          typeof data.error === "string"
+            ? data.error
+            : res.status === 503
+              ? "The AI service is temporarily unavailable. Please try again in a moment."
+              : "AI refinement failed. Try again.";
+        toast.dismiss(refineToast);
+        toast.error(message);
+        return;
       }
 
       const refinedText = typeof data.refinedText === "string" ? data.refinedText.trim() : "";
       if (!refinedText) {
-        throw new Error("AI returned an empty response");
+        toast.dismiss(refineToast);
+        toast.error("AI returned an empty response. Try again.");
+        return;
       }
 
       if (hasSelection) {
@@ -499,9 +520,9 @@ export function NotesPage() {
       toast.dismiss(refineToast);
       toast.success("Text refined by AI!");
     } catch (error) {
-      console.error(error);
+      console.error("AI refinement error:", error);
       toast.dismiss(refineToast);
-      toast.error(error instanceof Error ? error.message : "AI refinement failed. Try again.");
+      toast.error("AI refinement failed. Check your connection and try again.");
     } finally {
       isAiRefiningRef.current = false;
       setIsAiRefining(false);
@@ -733,11 +754,7 @@ export function NotesPage() {
                         setNotes((prevNotes) =>
                           prevNotes.map((n) => (n.id === activeNote.id ? { ...n, title: newTitle } : n))
                         );
-                        // Trigger debounced title save
-                        if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current);
-                        titleSaveTimerRef.current = setTimeout(() => {
-                          saveNoteContent(activeNote.id, editor?.getHTML() || "", newTitle);
-                        }, 800);
+                        debouncedSaveNoteContent(activeNote.id, editor?.getHTML() || "", newTitle);
                       }}
                       placeholder="Untitled Note"
                       className="w-full text-2xl font-bold text-foreground bg-transparent border-none outline-none placeholder:text-muted-foreground/45"
