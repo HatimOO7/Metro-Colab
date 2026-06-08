@@ -5,7 +5,6 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import { BubbleMenu } from "@tiptap/react/menus";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
-import Underline from "@tiptap/extension-underline";
 import CharacterCount from "@tiptap/extension-character-count";
 import {
   Bold as BoldIcon,
@@ -49,9 +48,17 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
-const preventFocusSteal = {
+/** Keeps Tiptap focused when clicking toolbar triggers (not Radix menu items). */
+const preventEditorBlur = {
   onPointerDown: (e: React.PointerEvent) => e.preventDefault(),
   onMouseDown: (e: React.MouseEvent) => e.preventDefault(),
+};
+
+type AiSelectionSnapshot = {
+  from: number;
+  to: number;
+  text: string;
+  hasSelection: boolean;
 };
 
 // Types
@@ -108,6 +115,8 @@ export function NotesPage() {
   const searchInputRef = React.useRef<HTMLInputElement>(null);
 
   const previousNoteIdRef = React.useRef<number | null>(null);
+  const aiSelectionRef = React.useRef<AiSelectionSnapshot | null>(null);
+  const isAiRefiningRef = React.useRef(false);
 
   React.useEffect(() => {
     activeNoteIdRef.current = activeNoteId;
@@ -197,7 +206,6 @@ export function NotesPage() {
   const editor = useEditor({
     extensions: [
       StarterKit,
-      Underline,
       CharacterCount,
       Placeholder.configure({
         placeholder: "Press '/' for commands...",
@@ -421,45 +429,85 @@ export function NotesPage() {
     setRenamingNoteId(null);
   };
 
-  // AI Refine trigger
-  const runAiRefine = async (action: string, tone?: string) => {
+  const captureAiSelection = React.useCallback(() => {
     if (!editor) return;
+    const { from, to } = editor.state.selection;
+    const hasSelection = from !== to;
+    const text = hasSelection
+      ? editor.state.doc.textBetween(from, to, " ")
+      : editor.getText();
 
-    const { selection } = editor.state;
-    const selectedText = editor.state.doc.textBetween(selection.from, selection.to, "\n");
+    aiSelectionRef.current = { from, to, text, hasSelection };
+  }, [editor]);
 
-    if (!selectedText.trim()) {
-      toast.error("Please select text in the editor to refine.");
+  // AI Refine — uses snapshot captured when the dropdown opens (selection is lost on item click).
+  const runAiRefine = React.useCallback(async (action: string, tone?: string) => {
+    if (!editor || isAiRefiningRef.current) return;
+
+    const snapshot = aiSelectionRef.current;
+    if (!snapshot) {
+      toast.error("Nothing to refine.");
       return;
     }
 
+    const { from, to, text: textToRefine, hasSelection } = snapshot;
+
+    if (!textToRefine.trim()) {
+      toast.error("Nothing to refine.");
+      return;
+    }
+
+    isAiRefiningRef.current = true;
     setIsAiRefining(true);
-    const refineToast = toast.loading("AI is refining your selection...");
+    const refineToast = toast.loading(
+      hasSelection ? "AI is refining your selection..." : "AI is refining your note..."
+    );
 
     try {
       const res = await fetch("/api/ai/refine", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: selectedText, action, tone }),
+        body: JSON.stringify({ text: textToRefine, action, tone }),
       });
 
-      if (!res.ok) throw new Error("AI Refinement failed");
+      const data = await res.json().catch(() => ({}));
 
-      const data = await res.json();
-      
-      // Insert refined content back to cursor/selection
-      editor.chain().focus().insertContent(data.refinedText).run();
-      
+      if (!res.ok) {
+        throw new Error(typeof data.error === "string" ? data.error : "AI Refinement failed");
+      }
+
+      const refinedText = typeof data.refinedText === "string" ? data.refinedText.trim() : "";
+      if (!refinedText) {
+        throw new Error("AI returned an empty response");
+      }
+
+      if (hasSelection) {
+        const docSize = editor.state.doc.content.size;
+        const safeFrom = Math.max(0, Math.min(from, docSize));
+        const safeTo = Math.max(safeFrom, Math.min(to, docSize));
+
+        editor
+          .chain()
+          .focus()
+          .setTextSelection({ from: safeFrom, to: safeTo })
+          .insertContent(refinedText)
+          .run();
+      } else {
+        editor.chain().focus().setContent(refinedText).run();
+      }
+
       toast.dismiss(refineToast);
       toast.success("Text refined by AI!");
     } catch (error) {
       console.error(error);
       toast.dismiss(refineToast);
-      toast.error("AI refinement failed. Try again.");
+      toast.error(error instanceof Error ? error.message : "AI refinement failed. Try again.");
     } finally {
+      isAiRefiningRef.current = false;
       setIsAiRefining(false);
+      aiSelectionRef.current = null;
     }
-  };
+  }, [editor]);
 
   // Helper counts
   const wordCount = editor ? editor.storage.characterCount.words() : 0;
@@ -869,7 +917,20 @@ export function NotesPage() {
               {/* Tiptap HTML Canvas */}
               {editor && (
                 <>
-                  <div className="prose prose-sm sm:prose lg:prose-lg max-w-none dark:prose-invert focus:outline-none">
+                  <div
+                    className={cn(
+                      "prose prose-sm sm:prose lg:prose-lg max-w-none dark:prose-invert focus:outline-none relative",
+                      isAiRefining && "pointer-events-none opacity-60"
+                    )}
+                  >
+                    {isAiRefining && (
+                      <div className="absolute inset-0 z-10 flex items-start justify-center pt-8">
+                        <div className="flex items-center gap-2 rounded-lg border border-violet-200 bg-white/90 px-3 py-2 text-xs font-medium text-violet-700 shadow-sm">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          Refining with AI...
+                        </div>
+                      </div>
+                    )}
                     <EditorContent editor={editor} />
                   </div>
 
@@ -907,60 +968,71 @@ export function NotesPage() {
                     </Button>
                     <div className="w-px h-4 bg-border/80 mx-1" />
                     {/* AI Refine Dropdown inside Bubble Menu */}
-                    <DropdownMenu modal={false}>
+                    <DropdownMenu
+                      modal={false}
+                      onOpenChange={(open) => {
+                        if (open) captureAiSelection();
+                      }}
+                    >
                       <DropdownMenuTrigger asChild>
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-7 px-2 rounded-md text-xs font-medium text-violet-700 hover:text-violet-800 hover:bg-violet-50 flex items-center gap-1"
-                          {...preventFocusSteal}
+                          disabled={isAiRefining}
+                          className={cn(
+                            "h-7 px-2 rounded-md text-xs font-medium text-violet-700 hover:text-violet-800 hover:bg-violet-50 flex items-center gap-1",
+                            isAiRefining && "opacity-70"
+                          )}
+                          onMouseDown={(e) => e.preventDefault()}
                         >
-                          <Sparkles className="h-3 w-3 text-violet-600 animate-pulse" />
-                          AI Refine
+                          {isAiRefining ? (
+                            <Loader2 className="h-3 w-3 text-violet-600 animate-spin" />
+                          ) : (
+                            <Sparkles className="h-3 w-3 text-violet-600 animate-pulse" />
+                          )}
+                          {isAiRefining ? "Refining..." : "AI Refine"}
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent
                         side="top"
                         className="w-44"
-                        {...preventFocusSteal}
+                        onCloseAutoFocus={(e) => e.preventDefault()}
                       >
                         <DropdownMenuItem
-                          onClick={() => runAiRefine("grammar")}
+                          onSelect={() => void runAiRefine("grammar")}
                           disabled={isAiRefining}
                           className="text-[11px]"
-                          {...preventFocusSteal}
                         >
+                          {isAiRefining ? (
+                            <Loader2 className="h-3 w-3 animate-spin text-violet-600" />
+                          ) : null}
                           Improve grammar
                         </DropdownMenuItem>
                         <DropdownMenuItem
-                          onClick={() => runAiRefine("rephrase")}
+                          onSelect={() => void runAiRefine("rephrase")}
                           disabled={isAiRefining}
                           className="text-[11px]"
-                          {...preventFocusSteal}
                         >
                           Rephrase
                         </DropdownMenuItem>
                         <DropdownMenuItem
-                          onClick={() => runAiRefine("shorter")}
+                          onSelect={() => void runAiRefine("shorter")}
                           disabled={isAiRefining}
                           className="text-[11px]"
-                          {...preventFocusSteal}
                         >
                           Make shorter
                         </DropdownMenuItem>
                         <DropdownMenuItem
-                          onClick={() => runAiRefine("longer")}
+                          onSelect={() => void runAiRefine("longer")}
                           disabled={isAiRefining}
                           className="text-[11px]"
-                          {...preventFocusSteal}
                         >
                           Make longer
                         </DropdownMenuItem>
                         <DropdownMenuItem
-                          onClick={() => runAiRefine("simplify")}
+                          onSelect={() => void runAiRefine("simplify")}
                           disabled={isAiRefining}
                           className="text-[11px]"
-                          {...preventFocusSteal}
                         >
                           Simplify language
                         </DropdownMenuItem>
@@ -969,26 +1041,23 @@ export function NotesPage() {
                           Change Tone
                         </DropdownMenuLabel>
                         <DropdownMenuItem
-                          onClick={() => runAiRefine("tone", "professional")}
+                          onSelect={() => void runAiRefine("tone", "professional")}
                           disabled={isAiRefining}
                           className="text-[11px]"
-                          {...preventFocusSteal}
                         >
                           💼 Professional
                         </DropdownMenuItem>
                         <DropdownMenuItem
-                          onClick={() => runAiRefine("tone", "casual")}
+                          onSelect={() => void runAiRefine("tone", "casual")}
                           disabled={isAiRefining}
                           className="text-[11px]"
-                          {...preventFocusSteal}
                         >
                           ☕ Casual
                         </DropdownMenuItem>
                         <DropdownMenuItem
-                          onClick={() => runAiRefine("tone", "creative")}
+                          onSelect={() => void runAiRefine("tone", "creative")}
                           disabled={isAiRefining}
                           className="text-[11px]"
-                          {...preventFocusSteal}
                         >
                           🎨 Creative
                         </DropdownMenuItem>
