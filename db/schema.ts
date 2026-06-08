@@ -109,3 +109,29 @@ export const kanbanTasks = pgTable(
 
 export type KanbanTask = typeof kanbanTasks.$inferSelect;
 export type NewKanbanTask = typeof kanbanTasks.$inferInsert;
+
+export const notes = pgTable(
+  "notes",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    title: text("title").notNull().default("Untitled"),
+    content: text("content").notNull().default(""),
+    icon: text("icon").notNull().default("📄"),
+    color: text("color").notNull().default("amber"),
+    isPinned: boolean("is_pinned").notNull().default(false),
+    isTrash: boolean("is_trash").notNull().default(false),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("notes_user_idx").on(table.userId),
+    index("notes_is_trash_idx").on(table.isTrash),
+  ]
+);
+
+export type Note = typeof notes.$inferSelect;
+export type NewNote = typeof notes.$inferInsert;
+

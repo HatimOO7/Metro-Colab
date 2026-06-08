@@ -30,6 +30,7 @@ import * as React from "react";
 
 import { Button } from "@/components/ui/button";
 import { KanbanBoardPage } from "@/components/kanban-board";
+import { NotesPage } from "@/components/notes-page";
 import {
   collectKanbanSearchResults,
   filterCalendarItems,
@@ -346,8 +347,16 @@ function AppShellContent({
         </aside>
 
         <section className="flex min-w-0 flex-1 flex-col">
-          <AppHeader activeItem={activeItem} onNewSpace={handleNewSpace} />
-          {isCalendar ? <CalendarPlanner /> : isKanban ? <KanbanBoardPage /> : <DashboardContent />}
+          {activeItem !== "Notes" && <AppHeader activeItem={activeItem} onNewSpace={handleNewSpace} />}
+          {isCalendar ? (
+            <CalendarPlanner />
+          ) : isKanban ? (
+            <KanbanBoardPage />
+          ) : activeItem === "Notes" ? (
+            <NotesPage />
+          ) : (
+            <DashboardContent />
+          )}
         </section>
       </div>
     </main>

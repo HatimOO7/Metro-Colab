@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
+@config "../tailwind.config.ts";
 @import "@liveblocks/react-ui/styles.css";
 @theme inline {
   --color-background: var(--background);
