@@ -6,10 +6,11 @@ import {
   LiveKitRoom,
   ParticipantTile,
   RoomAudioRenderer,
+  useRoomContext,
   useTracks,
 } from "@livekit/components-react";
 import "@livekit/components-styles";
-import { GripHorizontal, Loader2 } from "lucide-react";
+import { GripHorizontal, Loader2, PhoneOff } from "lucide-react";
 import { Track } from "livekit-client";
 import * as React from "react";
 import { toast } from "sonner";
@@ -36,6 +37,25 @@ function VideoTiles() {
     <GridLayout tracks={tracks} className="min-h-[200px] gap-2">
       <ParticipantTile />
     </GridLayout>
+  );
+}
+
+function HangUpButton() {
+  const room = useRoomContext();
+
+  return (
+    <div className="flex justify-center pt-1">
+      <Button
+        type="button"
+        size="sm"
+        variant="destructive"
+        className="gap-2 rounded-full px-5 font-semibold shadow-md transition-transform hover:scale-105"
+        onClick={() => room.disconnect()}
+      >
+        <PhoneOff className="h-4 w-4" />
+        Hang Up
+      </Button>
+    </div>
   );
 }
 
@@ -172,6 +192,7 @@ export function VideoCallPanel({ roomName, onClose, connect = true }: VideoCallP
                 leave: true,
               }}
             />
+            <HangUpButton />
           </LiveKitRoom>
         )}
 

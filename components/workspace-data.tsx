@@ -154,7 +154,7 @@ export function WorkspaceDataProvider({
   const [kanbanLoading, setKanbanLoading] = React.useState(false);
   const [kanbanReady, setKanbanReady] = React.useState(false);
   const [kanbanError, setKanbanError] = React.useState<string | null>(null);
-  
+
   const [pendingInvitations, setPendingInvitations] = React.useState<KanbanBoard[]>([]);
   const [pendingWhiteboardInvitations, setPendingWhiteboardInvitations] = React.useState<WhiteboardInvitation[]>([]);
   const [pendingWhiteboardSelection, setPendingWhiteboardSelection] = React.useState<number | null>(null);
