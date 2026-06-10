@@ -33,6 +33,13 @@ import { toast } from "sonner";
 import { PageDetailPanel } from "@/components/page-detail-panel";
 import { pageInitialStorage } from "@/lib/page-room-storage";
 import { SpaceInviteDialog } from "@/components/space-invite-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -308,7 +315,6 @@ function SpaceMoreMenu({
 
 function PageMoreMenu({
   page,
-  spaceId,
   onRename,
   onFavorite,
   onArchive,
@@ -318,7 +324,6 @@ function PageMoreMenu({
   onDelete,
 }: {
   page: PageRecord;
-  spaceId: number;
   onRename: () => void;
   onFavorite: () => void;
   onArchive: () => void;
@@ -327,41 +332,59 @@ function PageMoreMenu({
   onExport: () => void;
   onDelete: () => void;
 }) {
-  const [open, setOpen] = React.useState(false);
-  const ref = React.useRef<HTMLDivElement>(null);
-
-  React.useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
-    }
-    if (open) document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [open]);
-
   return (
-    <div ref={ref} className="relative" onClick={(e) => e.stopPropagation()}>
-      <button
-        type="button"
-        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
-        className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground opacity-0 transition group-hover:opacity-100 hover:bg-muted"
-        aria-label="Page options"
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground opacity-0 transition group-hover:opacity-100 hover:bg-muted data-[state=open]:opacity-100"
+          aria-label="Page options"
+        >
+          <MoreHorizontal className="h-3.5 w-3.5" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        className="min-w-[164px] rounded-xl"
+        onClick={(e) => e.stopPropagation()}
       >
-        <MoreHorizontal className="h-3.5 w-3.5" />
-      </button>
-      {open && (
-        <div className="absolute right-0 top-8 z-50 min-w-[164px] rounded-xl border border-border bg-white p-1 shadow-soft">
-          <DropdownItem icon={Edit3} label="Rename" onClick={() => { setOpen(false); onRename(); }} />
-          <DropdownItem icon={Copy} label="Duplicate" onClick={() => { setOpen(false); onDuplicate(); }} />
-          <DropdownItem icon={Share2} label="Share" onClick={() => { setOpen(false); onShare(); }} />
-          <DropdownItem icon={ExternalLink} label="Export" onClick={() => { setOpen(false); onExport(); }} />
-          <div className="my-1 h-px bg-border" />
-          <DropdownItem icon={page.isFavorite ? StarOff : Star} label={page.isFavorite ? "Unfavorite" : "Favorite"} onClick={() => { setOpen(false); onFavorite(); }} />
-          <DropdownItem icon={Archive} label={page.isArchived ? "Unarchive" : "Archive"} onClick={() => { setOpen(false); onArchive(); }} />
-          <div className="my-1 h-px bg-border" />
-          <DropdownItem icon={Trash2} label="Delete" danger onClick={() => { setOpen(false); onDelete(); }} />
-        </div>
-      )}
-    </div>
+        <DropdownMenuItem className="gap-2.5 text-xs font-medium" onSelect={onRename}>
+          <Edit3 className="h-3.5 w-3.5" />
+          Rename
+        </DropdownMenuItem>
+        <DropdownMenuItem className="gap-2.5 text-xs font-medium" onSelect={onDuplicate}>
+          <Copy className="h-3.5 w-3.5" />
+          Duplicate
+        </DropdownMenuItem>
+        <DropdownMenuItem className="gap-2.5 text-xs font-medium" onSelect={onShare}>
+          <Share2 className="h-3.5 w-3.5" />
+          Share
+        </DropdownMenuItem>
+        <DropdownMenuItem className="gap-2.5 text-xs font-medium" onSelect={onExport}>
+          <ExternalLink className="h-3.5 w-3.5" />
+          Export
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem className="gap-2.5 text-xs font-medium" onSelect={onFavorite}>
+          {page.isFavorite ? <StarOff className="h-3.5 w-3.5" /> : <Star className="h-3.5 w-3.5" />}
+          {page.isFavorite ? "Unfavorite" : "Favorite"}
+        </DropdownMenuItem>
+        <DropdownMenuItem className="gap-2.5 text-xs font-medium" onSelect={onArchive}>
+          <Archive className="h-3.5 w-3.5" />
+          {page.isArchived ? "Unarchive" : "Archive"}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          className="gap-2.5 text-xs font-medium text-destructive focus:bg-red-50 focus:text-destructive"
+          onSelect={onDelete}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+          Delete
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -1453,7 +1476,6 @@ function PagesTable({
               <div className="flex justify-end">
                 <PageMoreMenu
                   page={page}
-                  spaceId={space.id}
                   onRename={() => setRenameTarget(page)}
                   onFavorite={() => void handleFavorite(page)}
                   onArchive={() => void handleArchive(page)}
