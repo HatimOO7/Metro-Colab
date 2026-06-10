@@ -328,3 +328,66 @@ export const pageFiles = pgTable(
 
 export type PageFile = typeof pageFiles.$inferSelect;
 export type NewPageFile = typeof pageFiles.$inferInsert;
+
+// ── AI Template Builder ───────────────────────────────────────────────────────
+
+export type AiTemplateSection = {
+  id: string;
+  type: "stats" | "list" | "table" | "form" | "progress" | "checklist" | "tags" | "chart" | "button";
+  title?: string;
+  data?: unknown;
+};
+
+export type AiTemplateJson = {
+  appName: string;
+  description: string;
+  icon: string;
+  color: string;
+  layout: string;
+  sections: AiTemplateSection[];
+  actions: { label: string; variant?: string }[];
+  sampleData: Record<string, unknown>[];
+};
+
+export const aiTemplates = pgTable(
+  "ai_templates",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    appName: text("app_name").notNull(),
+    description: text("description").notNull().default(""),
+    icon: text("icon").notNull().default("Sparkles"),
+    color: text("color").notNull().default("#6366F1"),
+    appJson: jsonb("app_json").$type<AiTemplateJson>().notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [index("ai_templates_user_idx").on(table.userId)]
+);
+
+export type AiTemplate = typeof aiTemplates.$inferSelect;
+export type NewAiTemplate = typeof aiTemplates.$inferInsert;
+
+export const aiTemplateSidebarPins = pgTable(
+  "ai_template_sidebar_pins",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    templateId: integer("template_id")
+      .notNull()
+      .references(() => aiTemplates.id, { onDelete: "cascade" }),
+    position: integer("position").notNull().default(0),
+    pinnedAt: timestamp("pinned_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("ai_sidebar_pins_user_idx").on(table.userId),
+    index("ai_sidebar_pins_template_idx").on(table.templateId),
+  ]
+);
+
+export type AiTemplateSidebarPin = typeof aiTemplateSidebarPins.$inferSelect;
+export type NewAiTemplateSidebarPin = typeof aiTemplateSidebarPins.$inferInsert;

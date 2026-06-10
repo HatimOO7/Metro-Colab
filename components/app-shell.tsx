@@ -17,6 +17,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   PenLine,
+  Pin,
   Plus,
   Search,
   Settings,
@@ -25,6 +26,7 @@ import {
   Trash2,
   UsersRound,
   X,
+  Zap,
 } from "lucide-react";
 import * as React from "react";
 
@@ -34,6 +36,8 @@ import { NotesPage } from "@/components/notes-page";
 import { IncomingCallProvider } from "@/components/whiteboard/incoming-call-provider";
 import { WhiteboardPage } from "@/components/whiteboard-page";
 import { PagesSpacesPage } from "@/components/pages-spaces";
+import { AiTemplateBuilderPage } from "@/components/ai-template-builder";
+import { AppIcon, AppPreviewRenderer } from "@/components/ai-template-preview";
 import {
   collectKanbanSearchResults,
   filterCalendarItems,
@@ -44,6 +48,13 @@ import {
   type CalendarItem,
 } from "@/components/workspace-data";
 import { cn } from "@/lib/utils";
+
+type PinnedApp = {
+  id: number;
+  appName: string;
+  icon: string;
+  color: string;
+};
 
 type MenuItem = {
   label: string;
@@ -256,6 +267,42 @@ function AppShellContent({
   const isKanban = activeItem === "Task / Kanban";
   const isWhiteboard = activeItem === "Whiteboard";
   const isPagesSpaces = activeItem === "Pages / Spaces";
+  const isAiBuilder = activeItem === "AI Template Builder";
+
+  // Pinned AI apps for sidebar
+  const [pinnedApps, setPinnedApps] = React.useState<PinnedApp[]>([]);
+  const [pinnedPreviewId, setPinnedPreviewId] = React.useState<number | null>(null);
+
+  const loadPinnedApps = React.useCallback(async () => {
+    try {
+      const res = await fetch("/api/ai-templates/sidebar");
+      if (!res.ok) return;
+      const data = (await res.json()) as { pins: (PinnedApp & { appJson: { icon: string; color: string } })[] };
+      setPinnedApps(
+        data.pins.map((p) => ({
+          id: p.id,
+          appName: p.appName,
+          icon: p.appJson?.icon ?? p.icon,
+          color: p.appJson?.color ?? p.color,
+        }))
+      );
+    } catch {
+      // silently ignore sidebar load errors
+    }
+  }, []);
+
+  React.useEffect(() => {
+    void loadPinnedApps();
+  }, [loadPinnedApps]);
+
+  // Reload pins whenever user leaves the builder page
+  const prevActiveItem = React.useRef(activeItem);
+  React.useEffect(() => {
+    if (prevActiveItem.current === "AI Template Builder" && activeItem !== "AI Template Builder") {
+      void loadPinnedApps();
+    }
+    prevActiveItem.current = activeItem;
+  }, [activeItem, loadPinnedApps]);
 
   const handleNewSpace = () => {
     setActiveItem("Task / Kanban");
@@ -332,6 +379,40 @@ function AppShellContent({
                 </div>
               </div>
             ))}
+
+            {/* Pinned AI Apps section */}
+            {pinnedApps.length > 0 && (
+              <div>
+                {!collapsed && (
+                  <p className="mb-1 px-2 text-[9px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                    My Apps
+                  </p>
+                )}
+                <div className="space-y-1">
+                  {pinnedApps.map((app) => (
+                    <button
+                      key={app.id}
+                      type="button"
+                      onClick={() => setPinnedPreviewId(app.id)}
+                      className={cn(
+                        "flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[11px] font-semibold transition",
+                        collapsed && "justify-center px-0",
+                        "text-muted-foreground hover:bg-white/75 hover:text-foreground"
+                      )}
+                      title={app.appName}
+                    >
+                      <span
+                        className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm"
+                        style={{ backgroundColor: `${app.color}28` }}
+                      >
+                        <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: app.color }} />
+                      </span>
+                      {!collapsed && <span className="truncate">{app.appName}</span>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </nav>
 
           <div className="mt-4 rounded-lg border border-border bg-white/80 p-2">
@@ -354,7 +435,7 @@ function AppShellContent({
         </aside>
 
         <section className={cn("flex min-w-0 flex-1 flex-col", isWhiteboard && "min-h-0 overflow-hidden", isPagesSpaces && "min-h-0")}>
-          {activeItem !== "Notes" && !isWhiteboard && !isPagesSpaces && <AppHeader activeItem={activeItem} onNewSpace={handleNewSpace} />}
+          {activeItem !== "Notes" && !isWhiteboard && !isPagesSpaces && !isAiBuilder && <AppHeader activeItem={activeItem} onNewSpace={handleNewSpace} />}
           {isCalendar ? (
             <CalendarPlanner />
           ) : isKanban ? (
@@ -365,12 +446,88 @@ function AppShellContent({
             <WhiteboardPage />
           ) : isPagesSpaces ? (
             <PagesSpacesPage />
+          ) : isAiBuilder ? (
+            <AiTemplateBuilderPage />
           ) : (
             <DashboardContent />
           )}
         </section>
       </div>
+
+      {/* Pinned app preview modal */}
+      {pinnedPreviewId !== null && (
+        <PinnedAppPreviewModal
+          templateId={pinnedPreviewId}
+          onClose={() => setPinnedPreviewId(null)}
+        />
+      )}
     </main>
+  );
+}
+
+// ── Pinned App Preview Modal ───────────────────────────────────────────────────
+
+function PinnedAppPreviewModal({
+  templateId,
+  onClose,
+}: {
+  templateId: number;
+  onClose: () => void;
+}) {
+  const [template, setTemplate] = React.useState<{ appJson: import("@/db/schema").AiTemplateJson; appName: string; icon: string; color: string } | null>(null);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    setLoading(true);
+    fetch(`/api/ai-templates/${templateId}`)
+      .then((r) => r.json())
+      .then((d: { template?: typeof template }) => { if (d.template) setTemplate(d.template); })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [templateId]);
+
+  return (
+    <>
+      <div
+        className="fixed inset-0 z-30 bg-foreground/20 backdrop-blur-sm"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+      <aside className="fixed bottom-0 right-0 top-0 z-40 flex w-full max-w-2xl flex-col border-l border-border bg-background shadow-2xl">
+        <div className="flex items-center gap-3 border-b border-border px-5 py-3">
+          {template && (
+            <>
+              <AppIcon name={template.appJson.icon} color={template.appJson.color} size="sm" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold">{template.appJson.appName}</p>
+                <p className="text-[11px] text-muted-foreground">Pinned app</p>
+              </div>
+            </>
+          )}
+          {!template && !loading && <p className="flex-1 text-sm text-muted-foreground">App preview</p>}
+          <button
+            type="button"
+            onClick={onClose}
+            className="grid h-8 w-8 place-items-center rounded-lg border border-border bg-white text-muted-foreground transition hover:bg-muted"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-hidden">
+          {loading ? (
+            <div className="flex h-full items-center justify-center">
+              <Loader2 className="h-8 w-8 animate-spin text-orange-400" />
+            </div>
+          ) : template ? (
+            <AppPreviewRenderer appJson={template.appJson} />
+          ) : (
+            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+              App not found
+            </div>
+          )}
+        </div>
+      </aside>
+    </>
   );
 }
 
