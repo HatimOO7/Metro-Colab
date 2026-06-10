@@ -6,6 +6,8 @@ import { kanbanBoards, users } from "@/db/schema";
 import { parseUserInboxEmail } from "@/lib/liveblocks-shared";
 import { ensureUserInboxRoom, ensureWhiteboardRoom } from "@/lib/liveblocks-whiteboard";
 import { getWhiteboardOwnerEmail, getWhiteboardWithAccess } from "@/lib/whiteboard";
+import { getSpaceWithAccess } from "@/lib/spaces";
+import { getPageWithSpaceAccess } from "@/lib/pages";
 import { eq } from "drizzle-orm";
 
 const liveblocks = new Liveblocks({
@@ -31,15 +33,17 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { room } = body;
 
-    const email = user.emailAddresses[0]?.emailAddress;
-    
-    if (!email) {
+    const rawEmail = user.emailAddresses[0]?.emailAddress;
+
+    if (!rawEmail) {
       return new NextResponse("User has no email address", { status: 400 });
     }
 
+    const email = rawEmail.toLowerCase();
+
     const userInfo = {
       name: user.firstName ? `${user.firstName} ${user.lastName ?? ""}`.trim() : email,
-      email: email,
+      email,
       avatar: user.imageUrl,
     };
 
@@ -54,7 +58,10 @@ export async function POST(request: Request) {
         });
 
         if (board) {
-          if (board.userId === dbUser.id || (board.sharedEmails && board.sharedEmails.includes(email))) {
+          if (
+            board.userId === dbUser.id ||
+            (board.sharedEmails && board.sharedEmails.map((e) => e.toLowerCase()).includes(email))
+          ) {
             session.allow(room, session.FULL_ACCESS);
           } else {
             return new NextResponse("Forbidden", { status: 403 });
@@ -87,6 +94,34 @@ export async function POST(request: Request) {
         session.allow(room, session.FULL_ACCESS);
       } else {
         return new NextResponse("Forbidden", { status: 403 });
+      }
+    } else if (room && room.startsWith("space-")) {
+      // Pages & Spaces: space room
+      const spaceId = parseInt(room.replace("space-", ""), 10);
+
+      if (!isNaN(spaceId)) {
+        const space = await getSpaceWithAccess(spaceId, dbUser.id, email);
+        if (space) {
+          session.allow(room, session.FULL_ACCESS);
+        } else {
+          return new NextResponse("Forbidden", { status: 403 });
+        }
+      } else {
+        return new NextResponse("Invalid space room", { status: 400 });
+      }
+    } else if (room && room.startsWith("page-")) {
+      // Pages & Spaces: page room
+      const pageId = parseInt(room.replace("page-", ""), 10);
+
+      if (!isNaN(pageId)) {
+        const row = await getPageWithSpaceAccess(pageId, dbUser.id, email);
+        if (row) {
+          session.allow(room, session.FULL_ACCESS);
+        } else {
+          return new NextResponse("Forbidden", { status: 403 });
+        }
+      } else {
+        return new NextResponse("Invalid page room", { status: 400 });
       }
     } else {
       return new NextResponse("Invalid room", { status: 400 });

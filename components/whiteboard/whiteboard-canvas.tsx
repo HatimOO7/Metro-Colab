@@ -52,12 +52,12 @@ function CanvasInner({
   strokeColor,
   onSaveStatusChange,
   canvasRef,
-}: WhiteboardCanvasProps) {
+}: WhiteboardCanvasProps): React.ReactElement {
   const excalidrawRef = React.useRef<ExcalidrawImperativeAPI | null>(null);
   const containerRef = React.useRef<HTMLDivElement>(null);
   const isRemoteUpdate = React.useRef(false);
   const saveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const self = useSelf();
+  const liveblocksSelf = useSelf();
   const others = useOthers();
   const updatePresence = useUpdateMyPresence();
 
@@ -69,6 +69,40 @@ function CanvasInner({
     const canvas = root.canvas as { version?: number } | undefined;
     return canvas?.version ?? 0;
   });
+
+
+  const sanitizeElements = (elements: any[]): ExcalidrawElement[] => {
+    if (!elements || !Array.isArray(elements)) return [];
+
+    // Create a map of all valid IDs currently in the payload
+    const validIds = new Set(elements.map((el) => el.id));
+
+    return elements.map((el) => {
+      // 1. Completely remove fractionalIndex to force Excalidraw to recalculate z-index
+      const { fractionalIndex, ...safeElement } = el;
+
+      // 2. Fix boundElements (children attached to this shape)
+      let validBoundElements = safeElement.boundElements;
+      if (Array.isArray(safeElement.boundElements)) {
+        const filtered = safeElement.boundElements.filter(
+          (b: any) => b && typeof b.id === "string" && validIds.has(b.id)
+        );
+        validBoundElements = filtered.length ? filtered : null;
+      }
+
+      // 3. Fix containerId (if this text is bound to a parent shape that doesn't exist)
+      let validContainerId = safeElement.containerId;
+      if (validContainerId && !validIds.has(validContainerId)) {
+        validContainerId = null;
+      }
+
+      return {
+        ...safeElement,
+        boundElements: validBoundElements,
+        containerId: validContainerId
+      } as ExcalidrawElement;
+    });
+  };
 
   const storedElements = React.useMemo(() => {
     try {
@@ -98,19 +132,25 @@ function CanvasInner({
     }
 
     isRemoteUpdate.current = true;
-    excalidrawRef.current.updateScene({
-      elements: (storedElements ?? []) as unknown as ExcalidrawElement[],
-    });
-    isRemoteUpdate.current = false;
+    try {
+      // Sanitize elements to avoid Excalidraw invariant errors
+      const safeElements = sanitizeElements(storedElements ?? []);
+      excalidrawRef.current.updateScene({
+        elements: safeElements as unknown as ExcalidrawElement[],
+      });
+    } catch (error) {
+      console.error("Excalidraw updateScene prevented a crash:", error);
+    } finally {
+      isRemoteUpdate.current = false;
+    }
   }, [storageVersion, storedElements]);
-
   React.useEffect(() => {
-    const connectionId = self?.connectionId ?? 0;
+    const connectionId = liveblocksSelf?.connectionId ?? 0;
     updatePresence({
       name: userName,
       color: CURSOR_COLORS[connectionId % CURSOR_COLORS.length],
     });
-  }, [self?.connectionId, updatePresence, userName]);
+  }, [liveblocksSelf?.connectionId, updatePresence, userName]);
 
   const handleChange = React.useCallback(
     (elements: readonly ExcalidrawElement[]) => {
@@ -300,7 +340,7 @@ function CanvasInner({
         }}
         onChange={handleChange}
         initialData={{
-          elements: (storedElements ?? []) as unknown as ExcalidrawElement[],
+          elements: sanitizeElements(storedElements ?? []) as unknown as ExcalidrawElement[],
           appState: {
             viewBackgroundColor: "#fafafa",
             currentItemStrokeColor: strokeColor,

@@ -155,3 +155,154 @@ export const whiteboards = pgTable(
 export type Whiteboard = typeof whiteboards.$inferSelect;
 export type NewWhiteboard = typeof whiteboards.$inferInsert;
 
+// ── Pages & Spaces ───────────────────────────────────────────────────────────
+
+export const spaces = pgTable(
+  "spaces",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description"),
+    color: text("color").notNull().default("indigo"),
+    isFavorite: boolean("is_favorite").notNull().default(false),
+    isArchived: boolean("is_archived").notNull().default(false),
+    archivedAt: timestamp("archived_at"),
+    sharedEmails: jsonb("shared_emails").$type<string[]>().notNull().default([]),
+    pendingEmails: jsonb("pending_emails").$type<string[]>().notNull().default([]),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("spaces_user_idx").on(table.userId),
+    index("spaces_is_archived_idx").on(table.isArchived),
+  ]
+);
+
+export type Space = typeof spaces.$inferSelect;
+export type NewSpace = typeof spaces.$inferInsert;
+
+export const pages = pgTable(
+  "pages",
+  {
+    id: serial("id").primaryKey(),
+    spaceId: integer("space_id")
+      .notNull()
+      .references(() => spaces.id, { onDelete: "cascade" }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    lastEditedByUserId: integer("last_edited_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    title: text("title").notNull().default("Untitled Page"),
+    template: text("template").notNull().default("Blank Page"),
+    description: text("description"),
+    isFavorite: boolean("is_favorite").notNull().default(false),
+    isArchived: boolean("is_archived").notNull().default(false),
+    archivedAt: timestamp("archived_at"),
+    commentsCount: integer("comments_count").notNull().default(0),
+    linkedTasksCount: integer("linked_tasks_count").notNull().default(0),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("pages_space_idx").on(table.spaceId),
+    index("pages_user_idx").on(table.userId),
+    index("pages_is_archived_idx").on(table.isArchived),
+  ]
+);
+
+export type Page = typeof pages.$inferSelect;
+export type NewPage = typeof pages.$inferInsert;
+
+export const spaceMembers = pgTable(
+  "space_members",
+  {
+    id: serial("id").primaryKey(),
+    spaceId: integer("space_id")
+      .notNull()
+      .references(() => spaces.id, { onDelete: "cascade" }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    role: text("role").notNull(),
+    joinedAt: timestamp("joined_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("space_members_space_idx").on(table.spaceId),
+    index("space_members_user_idx").on(table.userId),
+  ]
+);
+
+export type SpaceMember = typeof spaceMembers.$inferSelect;
+export type NewSpaceMember = typeof spaceMembers.$inferInsert;
+
+export const spaceInvitations = pgTable(
+  "space_invitations",
+  {
+    id: serial("id").primaryKey(),
+    spaceId: integer("space_id")
+      .notNull()
+      .references(() => spaces.id, { onDelete: "cascade" }),
+    invitedBy: integer("invited_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    invitedEmail: text("invited_email").notNull(),
+    invitedUserId: integer("invited_user_id").references(() => users.id, { onDelete: "set null" }),
+    status: text("status").notNull().default("pending"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("space_invitations_space_idx").on(table.spaceId),
+    index("space_invitations_email_idx").on(table.invitedEmail),
+    index("space_invitations_status_idx").on(table.status),
+  ]
+);
+
+export type SpaceInvitation = typeof spaceInvitations.$inferSelect;
+export type NewSpaceInvitation = typeof spaceInvitations.$inferInsert;
+
+export const pageComments = pgTable(
+  "page_comments",
+  {
+    id: serial("id").primaryKey(),
+    pageId: integer("page_id")
+      .notNull()
+      .references(() => pages.id, { onDelete: "cascade" }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    content: text("content").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [index("page_comments_page_idx").on(table.pageId)]
+);
+
+export type PageComment = typeof pageComments.$inferSelect;
+export type NewPageComment = typeof pageComments.$inferInsert;
+
+export const pageTaskLinks = pgTable(
+  "page_task_links",
+  {
+    id: serial("id").primaryKey(),
+    pageId: integer("page_id")
+      .notNull()
+      .references(() => pages.id, { onDelete: "cascade" }),
+    taskId: integer("task_id")
+      .notNull()
+      .references(() => kanbanTasks.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("page_task_links_page_idx").on(table.pageId),
+    index("page_task_links_task_idx").on(table.taskId),
+  ]
+);
+
+export type PageTaskLink = typeof pageTaskLinks.$inferSelect;
+export type NewPageTaskLink = typeof pageTaskLinks.$inferInsert;

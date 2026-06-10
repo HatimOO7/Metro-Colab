@@ -25,7 +25,7 @@ export async function GET(request: Request) {
 
     // Liveblocks resolveUsers expects an array of the same length and order as the userIds requested.
     const results = userIds.map((id) => {
-      const u = dbUsers.find((user) => user.email === id);
+      const u = dbUsers.find((user) => user.email.toLowerCase() === id.toLowerCase());
       if (u) {
         return {
           name: u.name || (u.firstName ? `${u.firstName} ${u.lastName ?? ""}`.trim() : u.email),
@@ -38,6 +38,6 @@ export async function GET(request: Request) {
     return NextResponse.json(results);
   } catch (error) {
     console.error("Error resolving users", error);
-    return NextResponse.json([], { status: 500 });
+    return NextResponse.json(userIds.map(() => null), { status: 500 });
   }
 }

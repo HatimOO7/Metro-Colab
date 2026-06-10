@@ -12,25 +12,32 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const boards = await getWhiteboardsForUser(user.id, user.email);
-  const ownerIds = [...new Set(boards.map((board) => board.userId))];
-  const owners =
-    ownerIds.length > 0
-      ? await db
+  try {
+
+    const boards = await getWhiteboardsForUser(user.id, user.email);
+
+    const ownerIds = [...new Set(boards.map((board) => board.userId))];
+    const owners =
+      ownerIds.length > 0
+        ? await db
           .select({ id: users.id, email: users.email })
           .from(users)
           .where(inArray(users.id, ownerIds))
-      : [];
+        : [];
 
-  const ownerEmailById = new Map(owners.map((owner) => [owner.id, owner.email]));
+    const ownerEmailById = new Map(owners.map((owner) => [owner.id, owner.email]));
 
-  return NextResponse.json({
-    boards: boards.map((board) => ({
-      ...board,
-      role: board.userId === user.id ? "owner" : "collaborator",
-      ownerEmail: ownerEmailById.get(board.userId) ?? null,
-    })),
-  });
+    return NextResponse.json({
+      boards: boards.map((board) => ({
+        ...board,
+        role: board.userId === user.id ? "owner" : "collaborator",
+        ownerEmail: ownerEmailById.get(board.userId) ?? null,
+      })),
+    });
+  } catch (error) {
+    console.error("Error inside whiteboards GET route:", error);
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+  }
 }
 
 export async function POST(request: Request) {

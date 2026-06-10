@@ -13,6 +13,15 @@ export function parseUserInboxEmail(roomId: string) {
   return decodeURIComponent(roomId.replace("user-inbox-", "")).toLowerCase();
 }
 
+// Pages & Spaces room IDs
+export function spaceRoomId(spaceId: number) {
+  return `space-${spaceId}`;
+}
+
+export function pageRoomId(pageId: number) {
+  return `page-${pageId}`;
+}
+
 export type IncomingCallEvent = {
   type: "INCOMING_CALL";
   callId: string;

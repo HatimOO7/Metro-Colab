@@ -33,6 +33,7 @@ import { KanbanBoardPage } from "@/components/kanban-board";
 import { NotesPage } from "@/components/notes-page";
 import { IncomingCallProvider } from "@/components/whiteboard/incoming-call-provider";
 import { WhiteboardPage } from "@/components/whiteboard-page";
+import { PagesSpacesPage } from "@/components/pages-spaces";
 import {
   collectKanbanSearchResults,
   filterCalendarItems,
@@ -254,6 +255,7 @@ function AppShellContent({
   const isCalendar = activeItem === "Calendar";
   const isKanban = activeItem === "Task / Kanban";
   const isWhiteboard = activeItem === "Whiteboard";
+  const isPagesSpaces = activeItem === "Pages / Spaces";
 
   const handleNewSpace = () => {
     setActiveItem("Task / Kanban");
@@ -351,8 +353,8 @@ function AppShellContent({
           </div>
         </aside>
 
-        <section className={cn("flex min-w-0 flex-1 flex-col", isWhiteboard && "min-h-0 overflow-hidden")}>
-          {activeItem !== "Notes" && !isWhiteboard && <AppHeader activeItem={activeItem} onNewSpace={handleNewSpace} />}
+        <section className={cn("flex min-w-0 flex-1 flex-col", isWhiteboard && "min-h-0 overflow-hidden", isPagesSpaces && "min-h-0")}>
+          {activeItem !== "Notes" && !isWhiteboard && !isPagesSpaces && <AppHeader activeItem={activeItem} onNewSpace={handleNewSpace} />}
           {isCalendar ? (
             <CalendarPlanner />
           ) : isKanban ? (
@@ -361,6 +363,8 @@ function AppShellContent({
             <NotesPage />
           ) : isWhiteboard ? (
             <WhiteboardPage />
+          ) : isPagesSpaces ? (
+            <PagesSpacesPage />
           ) : (
             <DashboardContent />
           )}
@@ -533,9 +537,15 @@ function DashboardContent() {
     pendingWhiteboardInvitations,
     acceptWhiteboardInvitation,
     rejectWhiteboardInvitation,
+    pendingSpaceInvitations,
+    acceptSpaceInvitation,
+    rejectSpaceInvitation,
   } = useWorkspaceData();
 
-  const hasInvitations = pendingInvitations.length > 0 || pendingWhiteboardInvitations.length > 0;
+  const hasInvitations =
+    pendingInvitations.length > 0 ||
+    pendingWhiteboardInvitations.length > 0 ||
+    pendingSpaceInvitations.length > 0;
 
   return (
     <div className="grid gap-4 px-4 py-5 lg:grid-cols-[1.5fr_1fr] lg:px-6">
@@ -605,6 +615,36 @@ function DashboardContent() {
                       type="button"
                       className="h-8 rounded-md bg-emerald-600 text-xs text-white hover:bg-emerald-700"
                       onClick={() => void acceptWhiteboardInvitation(board.id)}
+                    >
+                      Accept
+                    </Button>
+                  </div>
+                </div>
+              ))}
+              {pendingSpaceInvitations.map((invite) => (
+                <div key={`space-${invite.id}`} className="flex items-center justify-between rounded-lg border border-amber-200 bg-white p-3 shadow-sm">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="h-4 w-4 shrink-0 rounded-full bg-indigo-500" />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-foreground">{invite.spaceName}</p>
+                      <p className="truncate text-[10px] text-muted-foreground">
+                        Space · Invited by {invite.inviterName}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-8 rounded-md bg-white text-xs hover:bg-red-50 hover:text-destructive hover:border-red-200"
+                      onClick={() => void rejectSpaceInvitation(invite.id)}
+                    >
+                      Decline
+                    </Button>
+                    <Button
+                      type="button"
+                      className="h-8 rounded-md bg-emerald-600 text-xs text-white hover:bg-emerald-700"
+                      onClick={() => void acceptSpaceInvitation(invite.id)}
                     >
                       Accept
                     </Button>
