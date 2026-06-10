@@ -306,3 +306,25 @@ export const pageTaskLinks = pgTable(
 
 export type PageTaskLink = typeof pageTaskLinks.$inferSelect;
 export type NewPageTaskLink = typeof pageTaskLinks.$inferInsert;
+
+export const pageFiles = pgTable(
+  "page_files",
+  {
+    id: serial("id").primaryKey(),
+    pageId: integer("page_id")
+      .notNull()
+      .references(() => pages.id, { onDelete: "cascade" }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    fileName: text("file_name").notNull(),
+    mimeType: text("mime_type").notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    data: text("data").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [index("page_files_page_idx").on(table.pageId)]
+);
+
+export type PageFile = typeof pageFiles.$inferSelect;
+export type NewPageFile = typeof pageFiles.$inferInsert;

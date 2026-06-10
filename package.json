@@ -14,10 +14,12 @@
   "dependencies": {
     "@clerk/nextjs": "^7.2.3",
     "@excalidraw/excalidraw": "^0.18.1",
-    "@liveblocks/client": "^3.19.4",
-    "@liveblocks/node": "^3.19.4",
-    "@liveblocks/react": "^3.19.4",
-    "@liveblocks/react-ui": "^3.19.4",
+    "@liveblocks/client": "3.19.5",
+    "@liveblocks/node": "3.19.5",
+    "@liveblocks/react": "3.19.5",
+    "@liveblocks/react-tiptap": "3.19.5",
+    "@liveblocks/react-ui": "3.19.5",
+    "@liveblocks/yjs": "3.19.5",
     "@livekit/components-react": "^2.9.21",
     "@livekit/components-styles": "^1.2.0",
     "@neondatabase/serverless": "^1.0.2",
@@ -46,7 +48,8 @@
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "sonner": "^2.0.7",
-    "tailwind-merge": "^3.5.0"
+    "tailwind-merge": "^3.5.0",
+    "yjs": "^13.6.31"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.0.0",

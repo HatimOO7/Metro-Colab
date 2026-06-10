@@ -28,9 +28,10 @@ import {
   X,
 } from "lucide-react";
 import { useUser } from "@clerk/nextjs";
-import { LiveblocksProvider, RoomProvider, useOthers, useSelf, useUpdateMyPresence } from "@liveblocks/react";
+import { LiveblocksProvider, RoomProvider, useOthers, useSelf, useUpdateMyPresence, ClientSideSuspense } from "@liveblocks/react";
 import { toast } from "sonner";
 import { PageDetailPanel } from "@/components/page-detail-panel";
+import { pageInitialStorage } from "@/lib/page-room-storage";
 import { SpaceInviteDialog } from "@/components/space-invite-dialog";
 import { cn } from "@/lib/utils";
 
@@ -1628,17 +1629,26 @@ function PageDetailView({
     <RoomProvider
       id={`page-${page.id}`}
       initialPresence={{ cursor: null, pageId: page.id, spaceId: space.id }}
+      initialStorage={pageInitialStorage}
     >
-      <PageDetailInner
-        page={page}
-        space={space}
-        currentUserId={currentUserId}
-        onBack={onBack}
-        onBackToSpaces={onBackToSpaces}
-        onPageUpdated={onPageUpdated}
-        onPageDuplicated={onPageDuplicated}
-        onPageDeleted={onPageDeleted}
-      />
+      <ClientSideSuspense
+        fallback={
+          <div className="flex flex-1 items-center justify-center p-8 text-sm text-muted-foreground">
+            Loading collaboration…
+          </div>
+        }
+      >
+        <PageDetailInner
+          page={page}
+          space={space}
+          currentUserId={currentUserId}
+          onBack={onBack}
+          onBackToSpaces={onBackToSpaces}
+          onPageUpdated={onPageUpdated}
+          onPageDuplicated={onPageDuplicated}
+          onPageDeleted={onPageDeleted}
+        />
+      </ClientSideSuspense>
     </RoomProvider>
   );
 }

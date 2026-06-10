@@ -7,7 +7,6 @@ import {
   Edit3,
   ExternalLink,
   Link2,
-  Loader2,
   MessageCircle,
   Share2,
   Trash2,
@@ -16,6 +15,8 @@ import {
 } from "lucide-react";
 import { useOthers, useSelf } from "@liveblocks/react";
 import { toast } from "sonner";
+import { PageCollaborativeDescription } from "@/components/page-collaborative-description";
+import { PageTaskCount, PageTasksSection } from "@/components/page-tasks-section";
 import { cn } from "@/lib/utils";
 
 type PageRecord = {
@@ -49,22 +50,6 @@ type Comment = {
   authorName: string;
   authorEmail: string;
   authorImageUrl: string | null;
-};
-
-type LinkedTask = {
-  id: number;
-  title: string;
-  boardId: number;
-  priority: string;
-  dueDate: string;
-};
-
-type AvailableTask = {
-  id: number;
-  title: string;
-  boardId: number;
-  priority: string;
-  dueDate: string;
 };
 
 const PRESENCE_COLORS = [
@@ -151,22 +136,16 @@ export function PageDetailPanel({
 }) {
   const [editing, setEditing] = React.useState(false);
   const [title, setTitle] = React.useState(page.title);
-  const [description, setDescription] = React.useState(page.description ?? "");
   const [saving, setSaving] = React.useState(false);
   const [comments, setComments] = React.useState<Comment[]>([]);
-  const [linkedTasks, setLinkedTasks] = React.useState<LinkedTask[]>([]);
-  const [availableTasks, setAvailableTasks] = React.useState<AvailableTask[]>([]);
   const [newComment, setNewComment] = React.useState("");
   const [editingCommentId, setEditingCommentId] = React.useState<number | null>(null);
   const [editingCommentContent, setEditingCommentContent] = React.useState("");
-  const [showTaskPicker, setShowTaskPicker] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
-  const saveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   React.useEffect(() => {
     setTitle(page.title);
-    setDescription(page.description ?? "");
-  }, [page.id, page.title, page.description]);
+  }, [page.id, page.title]);
 
   const loadComments = React.useCallback(async () => {
     const res = await fetch(`/api/pages/${page.id}/comments`);
@@ -176,61 +155,17 @@ export function PageDetailPanel({
     }
   }, [page.id]);
 
-  const loadTasks = React.useCallback(async () => {
-    const res = await fetch(`/api/pages/${page.id}/tasks`);
-    if (res.ok) {
-      const data = await res.json();
-      setLinkedTasks(data.tasks ?? []);
-    }
-  }, [page.id]);
-
   React.useEffect(() => {
     void loadComments();
-    void loadTasks();
-  }, [loadComments, loadTasks]);
+  }, [loadComments]);
 
-  React.useEffect(() => {
-    if (!showTaskPicker) return;
-    void (async () => {
-      const res = await fetch("/api/pages/tasks/available");
-      if (res.ok) {
-        const data = await res.json();
-        setAvailableTasks(data.tasks ?? []);
-      }
-    })();
-  }, [showTaskPicker]);
-
-  function scheduleDescriptionSave(value: string) {
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => {
-      void saveDescription(value);
-    }, 800);
-  }
-
-  async function saveDescription(value: string) {
+  async function saveTitle() {
     setSaving(true);
     try {
       const res = await fetch(`/api/pages/${page.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ description: value || null }),
-      });
-      if (res.ok) {
-        const updated = await res.json();
-        onPageUpdated(updated);
-      }
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function saveTitleAndDescription() {
-    setSaving(true);
-    try {
-      const res = await fetch(`/api/pages/${page.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: title.trim() || "Untitled Page", description: description || null }),
+        body: JSON.stringify({ title: title.trim() || "Untitled Page" }),
       });
       if (res.ok) {
         const updated = await res.json();
@@ -285,36 +220,6 @@ export function PageDetailPanel({
     }
   }
 
-  async function attachTask(taskId: number) {
-    const res = await fetch(`/api/pages/${page.id}/tasks`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ taskId }),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      setLinkedTasks(data.tasks ?? []);
-      setShowTaskPicker(false);
-      const pageRes = await fetch(`/api/pages/${page.id}`);
-      if (pageRes.ok) onPageUpdated(await pageRes.json());
-      toast.success("Task linked");
-    }
-  }
-
-  async function detachTask(taskId: number) {
-    const res = await fetch(`/api/pages/${page.id}/tasks`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ taskId }),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      setLinkedTasks(data.tasks ?? []);
-      const pageRes = await fetch(`/api/pages/${page.id}`);
-      if (pageRes.ok) onPageUpdated(await pageRes.json());
-    }
-  }
-
   async function handleDuplicate() {
     const res = await fetch(`/api/pages/${page.id}`, {
       method: "PATCH",
@@ -361,12 +266,12 @@ export function PageDetailPanel({
   }
 
   function handleExportMarkdown() {
-    const md = `# ${page.title}\n\n**Space:** ${space.name}\n**Template:** ${page.template}\n**Updated:** ${page.updatedAt}\n\n${description || "_No description_"}\n\n## Comments (${comments.length})\n\n${comments.map((c) => `- **${c.authorName}:** ${c.content}`).join("\n")}\n\n## Linked Tasks (${linkedTasks.length})\n\n${linkedTasks.map((t) => `- ${t.title} (${t.priority})`).join("\n")}`;
+    const md = `# ${page.title}\n\n**Space:** ${space.name}\n**Template:** ${page.template}\n**Updated:** ${page.updatedAt}\n\n${page.description || "_Description is stored in the collaborative editor_"}\n\n## Comments (${comments.length})\n\n${comments.map((c) => `- **${c.authorName}:** ${c.content}`).join("\n")}`;
     downloadFile(`${page.title}.md`, md, "text/markdown");
   }
 
   function handleExportJson() {
-    const payload = { page, space: { id: space.id, name: space.name }, comments, linkedTasks };
+    const payload = { page, space: { id: space.id, name: space.name }, comments };
     downloadFile(`${page.title}.json`, JSON.stringify(payload, null, 2), "application/json");
   }
 
@@ -381,8 +286,6 @@ export function PageDetailPanel({
     toast.success("Export downloaded");
   }
 
-  const linkedTaskIds = new Set(linkedTasks.map((t) => t.id));
-
   return (
     <div className="mx-auto max-w-2xl space-y-6 rounded-2xl border border-border bg-white p-6 shadow-soft">
       {editing ? (
@@ -392,17 +295,10 @@ export function PageDetailPanel({
             onChange={(e) => setTitle(e.target.value)}
             className="w-full rounded-lg border border-border px-3 py-2 text-2xl font-bold outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
           />
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            rows={6}
-            placeholder="Write a description…"
-            className="w-full resize-y rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-          />
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => void saveTitleAndDescription()}
+              onClick={() => void saveTitle()}
               disabled={saving}
               className="h-8 rounded-lg bg-indigo-600 px-4 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
             >
@@ -410,7 +306,7 @@ export function PageDetailPanel({
             </button>
             <button
               type="button"
-              onClick={() => { setEditing(false); setTitle(page.title); setDescription(page.description ?? ""); }}
+              onClick={() => { setEditing(false); setTitle(page.title); }}
               className="h-8 rounded-lg border border-border px-4 text-xs font-medium hover:bg-muted"
             >
               Cancel
@@ -418,26 +314,18 @@ export function PageDetailPanel({
           </div>
         </div>
       ) : (
-        <>
-          <h2 className="text-2xl font-bold text-foreground">{page.title}</h2>
-          <textarea
-            value={description}
-            onChange={(e) => {
-              setDescription(e.target.value);
-              scheduleDescriptionSave(e.target.value);
-            }}
-            rows={4}
-            placeholder="Add a description…"
-            className="w-full resize-y rounded-lg border border-transparent bg-muted/30 px-3 py-2 text-sm leading-relaxed text-muted-foreground outline-none transition focus:border-indigo-200 focus:bg-white focus:text-foreground"
-          />
-          {saving && (
-            <p className="flex items-center gap-1 text-[10px] text-muted-foreground">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              Saving…
-            </p>
-          )}
-        </>
+        <h2 className="text-2xl font-bold text-foreground">{page.title}</h2>
       )}
+
+      <div>
+        <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground">
+          Description
+        </p>
+        <PageCollaborativeDescription
+          key={page.id}
+          initialPlainText={page.description}
+        />
+      </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="rounded-xl border border-border bg-muted/30 p-3">
@@ -450,9 +338,9 @@ export function PageDetailPanel({
         <div className="rounded-xl border border-border bg-muted/30 p-3">
           <div className="flex items-center gap-2">
             <Link2 className="h-4 w-4 text-emerald-500" />
-            <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground">Linked Tasks</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground">Tasks</p>
           </div>
-          <p className="mt-1 text-sm font-semibold">{linkedTasks.length}</p>
+          <PageTaskCount />
         </div>
       </div>
 
@@ -553,59 +441,7 @@ export function PageDetailPanel({
         </div>
       </div>
 
-      <div className="space-y-3 border-t border-border pt-4">
-        <div className="flex items-center justify-between">
-          <p className="text-xs font-semibold text-foreground">Linked tasks</p>
-          <button
-            type="button"
-            onClick={() => setShowTaskPicker((v) => !v)}
-            className="text-xs font-medium text-indigo-600 hover:underline"
-          >
-            {showTaskPicker ? "Cancel" : "Attach task"}
-          </button>
-        </div>
-        {showTaskPicker && (
-          <div className="max-h-40 overflow-y-auto rounded-lg border border-border p-2">
-            {availableTasks.filter((t) => !linkedTaskIds.has(t.id)).length === 0 ? (
-              <p className="px-2 py-2 text-xs text-muted-foreground">No available tasks from your boards.</p>
-            ) : (
-              availableTasks
-                .filter((t) => !linkedTaskIds.has(t.id))
-                .map((task) => (
-                  <button
-                    key={task.id}
-                    type="button"
-                    onClick={() => void attachTask(task.id)}
-                    className="flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-sm hover:bg-muted/50"
-                  >
-                    <span className="truncate">{task.title}</span>
-                    <span className="text-[10px] text-muted-foreground">{task.priority}</span>
-                  </button>
-                ))
-            )}
-          </div>
-        )}
-        <div className="space-y-1">
-          {linkedTasks.map((task) => (
-            <div key={task.id} className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
-              <div>
-                <p className="text-sm font-medium">{task.title}</p>
-                <p className="text-[10px] text-muted-foreground">{task.priority} · due {task.dueDate}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => void detachTask(task.id)}
-                className="text-xs text-destructive hover:underline"
-              >
-                Detach
-              </button>
-            </div>
-          ))}
-          {linkedTasks.length === 0 && (
-            <p className="text-xs text-muted-foreground">No linked tasks.</p>
-          )}
-        </div>
-      </div>
+      <PageTasksSection pageId={page.id} />
 
       <div className="flex flex-wrap gap-2 border-t border-border pt-4">
         <ActionButton icon={Edit3} label="Edit" onClick={() => setEditing(true)} />

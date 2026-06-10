@@ -2,6 +2,7 @@
 @plugin "@tailwindcss/typography";
 @config "../tailwind.config.ts";
 @import "@liveblocks/react-ui/styles.css";
+@import "@liveblocks/react-tiptap/styles.css";
 
 @theme inline {
   --color-background: var(--background);
