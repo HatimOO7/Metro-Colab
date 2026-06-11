@@ -310,11 +310,11 @@ function AppShellContent({
   };
 
   return (
-    <main className="min-h-screen bg-background text-foreground">
-      <div className="flex min-h-screen flex-col md:flex-row">
+    <main className="h-screen overflow-hidden bg-background text-foreground">
+      <div className="flex h-full flex-col md:flex-row">
         <aside
           className={cn(
-            "flex shrink-0 flex-col border-b border-border bg-sidebar px-2.5 py-3 transition-all duration-300 md:min-h-screen md:border-b-0 md:border-r",
+            "flex shrink-0 flex-col border-b border-border bg-sidebar px-2.5 py-3 transition-all duration-300 md:h-full md:border-b-0 md:border-r",
             collapsed ? "md:w-[68px]" : "md:w-[224px]"
           )}
         >
@@ -343,7 +343,7 @@ function AppShellContent({
             </Button>
           </div>
 
-          <nav className="mt-4 flex flex-1 flex-col gap-3" aria-label="Primary navigation">
+          <nav className="mt-4 flex flex-1 flex-col gap-3 overflow-y-auto pr-1" aria-label="Primary navigation">
             {menuGroups.map((group) => (
               <div key={group.label}>
                 {!collapsed && (
@@ -434,7 +434,7 @@ function AppShellContent({
           </div>
         </aside>
 
-        <section className={cn("flex min-w-0 flex-1 flex-col", isWhiteboard && "min-h-0 overflow-hidden", isPagesSpaces && "min-h-0")}>
+        <section className={cn("flex min-w-0 flex-1 flex-col overflow-y-auto", isWhiteboard && "overflow-hidden", isPagesSpaces && "overflow-hidden")}>
           {activeItem !== "Notes" && !isWhiteboard && !isPagesSpaces && !isAiBuilder && <AppHeader activeItem={activeItem} onNewSpace={handleNewSpace} />}
           {isCalendar ? (
             <CalendarPlanner />
@@ -482,7 +482,7 @@ function PinnedAppPreviewModal({
     fetch(`/api/ai-templates/${templateId}`)
       .then((r) => r.json())
       .then((d: { template?: typeof template }) => { if (d.template) setTemplate(d.template); })
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setLoading(false));
   }, [templateId]);
 
@@ -519,7 +519,7 @@ function PinnedAppPreviewModal({
               <Loader2 className="h-8 w-8 animate-spin text-orange-400" />
             </div>
           ) : template ? (
-            <AppPreviewRenderer appJson={template.appJson} />
+            <AppPreviewRenderer appJson={template.appJson} templateId={templateId} />
           ) : (
             <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
               App not found

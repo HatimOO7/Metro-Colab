@@ -19,31 +19,40 @@ const SYSTEM_PROMPT = `You are an AI mini-app generator. Given a user prompt, ou
   "icon": "string — one of: Flame, Target, Apple, BookOpen, DollarSign, Heart, Star, Zap, Coffee, Music, Camera, Globe, Briefcase, Clock, Trophy, Leaf, Moon, Sun, Activity, CheckSquare",
   "color": "string — hex color like #F97316 that matches the app theme",
   "layout": "single-page",
+  "initialState": { "listItems": [{ "id": "1", "label": "Drink Water", "completed": false }] },
   "sections": [
     {
       "id": "unique-section-id",
       "type": "stats | list | table | form | progress | checklist | tags | chart | button",
       "title": "Section Title",
-      "data": { ... section-specific data ... }
+      "data": { ... section-specific data ... },
+      "dataSource": "listItems",
+      "action": "TOGGLE_ITEM | ADD_ITEM | DELETE_ITEM",
+      "target": "listItems"
     }
   ],
   "actions": [
-    { "label": "Button label", "variant": "primary | secondary | destructive" }
+    { "label": "Button label", "variant": "primary | secondary | destructive", "action": "CLEAR_ALL", "target": "listItems" }
   ],
   "sampleData": [{ ... sample records relevant to this app ... }]
 }
 
 Section data shapes by type:
 - stats: { "items": [{ "label": "...", "value": "...", "icon": "...", "trend": "+5%" }] }
-- list: { "items": ["item 1", "item 2", ...] }
+- list: { "items": ["item 1", "item 2", ...] } // can also use dataSource
 - table: { "headers": ["Col1", "Col2"], "rows": [["val1", "val2"], ...] }
-- form: { "fields": [{ "label": "...", "type": "text|number|date|select", "placeholder": "..." }] }
+- form: { "fields": [{ "name": "...", "label": "...", "type": "text|number|date|select", "placeholder": "..." }] }
 - progress: { "items": [{ "label": "...", "value": 65, "color": "#F97316" }] }
-- checklist: { "items": [{ "label": "...", "checked": false }] }
+- checklist: { "items": [{ "id": "1", "label": "...", "checked": false }] } // can also use dataSource
 - tags: { "items": [{ "label": "...", "color": "#hex" }] }
 - chart: { "title": "...", "type": "bar|line|pie", "placeholder": "Chart visualization" }
 - button: { "label": "...", "variant": "primary|secondary" }
 
+CRITICAL RULES FOR INTERACTIVITY:
+- Include a robust \`initialState\` object with relevant arrays or objects to make the app interactive.
+- When generating a \`form\` section, include \`action: "ADD_ITEM"\` and \`target: "your_array_key"\` so it pushes the new item there. Fields should have a \`name\` property.
+- When generating a \`list\` or \`checklist\` section, use \`dataSource: "your_array_key"\` so it binds to the state, and include \`action: "TOGGLE_ITEM"\` if they can be checked off.
+- Make sure to give array items unique \`id\` properties.
 Generate 3-6 meaningful sections appropriate for the app. Include realistic sample data. Keep all text concise.`;
 
 function stripJson(text: string): string {
@@ -101,6 +110,13 @@ function mockTemplate(prompt: string): AiTemplateJson {
     icon: "Target",
     color: "#6366F1",
     layout: "single-page",
+    initialState: {
+      tasks: [
+        { id: "t1", label: "Morning routine", checked: true },
+        { id: "t2", label: "Review goals", checked: false },
+        { id: "t3", label: "Evening check-in", checked: false },
+      ]
+    },
     sections: [
       {
         id: "stats-1",
@@ -115,15 +131,26 @@ function mockTemplate(prompt: string): AiTemplateJson {
         },
       },
       {
+        id: "form-1",
+        type: "form",
+        title: "Add New Task",
+        action: "ADD_ITEM",
+        target: "tasks",
+        data: {
+          fields: [
+            { name: "label", label: "Task Description", type: "text", placeholder: "What needs to be done?" }
+          ]
+        }
+      },
+      {
         id: "checklist-1",
         type: "checklist",
         title: "Today's Tasks",
+        dataSource: "tasks",
+        action: "TOGGLE_ITEM",
+        target: "tasks",
         data: {
-          items: [
-            { label: "Morning routine", checked: true },
-            { label: "Review goals", checked: false },
-            { label: "Evening check-in", checked: false },
-          ],
+          items: [] // Populated by engine
         },
       },
       {

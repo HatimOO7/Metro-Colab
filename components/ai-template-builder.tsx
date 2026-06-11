@@ -21,9 +21,10 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { AppPreviewRenderer, AppIcon } from "@/components/ai-template-preview";
+import { AppPreviewRenderer, AppIcon } from "@/components/AppPreviewRenderer";
 import type { AiTemplate } from "@/db/schema";
 import type { AiTemplateJson } from "@/db/schema";
+
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -212,7 +213,7 @@ function PreviewPanel({
 
         {/* Renderer */}
         <div className="flex-1 overflow-hidden">
-          <AppPreviewRenderer appJson={template.appJson} />
+          <AppPreviewRenderer appJson={template.appJson} templateId={template.id} />
         </div>
       </aside>
     </>

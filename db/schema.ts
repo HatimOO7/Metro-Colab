@@ -1,4 +1,5 @@
-import { boolean, index, integer, jsonb, pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, pgTable, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -331,23 +332,79 @@ export type NewPageFile = typeof pageFiles.$inferInsert;
 
 // ── AI Template Builder ───────────────────────────────────────────────────────
 
+/** Strongly-typed data shape for each section type */
+export type StatItem = { label: string; value: string; icon?: string; trend?: string };
+export type FormField = {
+  name: string;
+  label: string;
+  type: "text" | "number" | "date" | "select" | "textarea";
+  placeholder?: string;
+  options?: string[]; // for select fields
+  stateKey?: string;
+  required?: boolean;
+};
+export type ChecklistItem = { id: string; label: string; checked?: boolean; completed?: boolean };
+export type ProgressItem = { label: string; value: number; color?: string };
+export type TagItem = { label: string; color?: string };
+
+export type SectionData =
+  | { type: "stats"; items: StatItem[] }
+  | { type: "list"; items: string[] }
+  | { type: "table"; headers: string[]; rows: string[][] }
+  | { type: "form"; fields: FormField[] }
+  | { type: "progress"; items: ProgressItem[] }
+  | { type: "checklist"; items: ChecklistItem[] }
+  | { type: "tags"; items: TagItem[] }
+  | { type: "chart"; title?: string; chartType?: "bar" | "line" | "pie" }
+  | { type: "button"; label: string; variant?: "primary" | "secondary" };
+
+export type ActionType =
+  | "UPDATE_FIELD"
+  | "ADD_ITEM"
+  | "TOGGLE_ITEM"
+  | "DELETE_ITEM"
+  | "CLEAR_ALL";
+
+export type AppAction = {
+  label: string;
+  variant?: "primary" | "secondary" | "destructive";
+  action?: ActionType;
+  target?: string;
+};
+
 export type AiTemplateSection = {
   id: string;
   type: "stats" | "list" | "table" | "form" | "progress" | "checklist" | "tags" | "chart" | "button";
   title?: string;
-  data?: unknown;
+  /** Section-specific configuration data */
+  data?: Record<string, unknown>;
+  /** Which action this section dispatches on interaction */
+  action?: ActionType;
+  /** The appState key this section writes to */
+  target?: string;
+  /** The appState key this section reads from (for dynamic lists/checklists) */
+  dataSource?: string;
+  /** Whether this section is collapsible in the UI */
+  collapsible?: boolean;
 };
 
 export type AiTemplateJson = {
   appName: string;
   description: string;
+  /** Lucide icon name */
   icon: string;
+  /** Hex color for theming (e.g. "#F97316") */
   color: string;
-  layout: string;
+  layout: "single-page" | "tabbed";
+  /** Initial reactive state for the mini-app */
+  initialState?: Record<string, unknown>;
   sections: AiTemplateSection[];
-  actions: { label: string; variant?: string }[];
+  actions: AppAction[];
   sampleData: Record<string, unknown>[];
 };
+
+/** The live runtime state of a generated mini-app */
+export type AppState = Record<string, unknown>;
 
 export const aiTemplates = pgTable(
   "ai_templates",
@@ -391,3 +448,25 @@ export const aiTemplateSidebarPins = pgTable(
 
 export type AiTemplateSidebarPin = typeof aiTemplateSidebarPins.$inferSelect;
 export type NewAiTemplateSidebarPin = typeof aiTemplateSidebarPins.$inferInsert;
+
+export const aiTemplateStates = pgTable(
+  "ai_template_states",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    templateId: integer("template_id")
+      .notNull()
+      .references(() => aiTemplates.id, { onDelete: "cascade" }),
+    appState: jsonb("app_state").$type<AppState>().notNull().default({}),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("ai_template_states_user_template_idx").on(table.userId, table.templateId),
+    uniqueIndex("ai_template_states_user_template_unique").on(table.userId, table.templateId),
+  ]
+);
+
+export type AiTemplateState = typeof aiTemplateStates.$inferSelect;
+export type NewAiTemplateState = typeof aiTemplateStates.$inferInsert;

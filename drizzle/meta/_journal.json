@@ -8,6 +8,13 @@
       "when": 1780419448502,
       "tag": "0000_abandoned_zzzax",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1781140820362,
+      "tag": "0001_ai_template_states_unique_idx",
+      "breakpoints": true
     }
   ]
 }
