@@ -79,7 +79,10 @@ export async function POST(request: Request) {
         if (board) {
           const ownerEmail = await getWhiteboardOwnerEmail(board.userId);
           if (ownerEmail) {
-            await ensureWhiteboardRoom(boardId, ownerEmail, board.name);
+            // FIX: Remvoved blocking 'await'. This now runs safely in the background.
+            ensureWhiteboardRoom(boardId, ownerEmail, board.name).catch((err) =>
+              console.error("Background ensureWhiteboardRoom failed:", err)
+            );
           }
           session.allow(room, session.FULL_ACCESS);
         } else {
@@ -90,13 +93,15 @@ export async function POST(request: Request) {
       const inboxEmail = parseUserInboxEmail(room);
 
       if (inboxEmail && inboxEmail === email.toLowerCase()) {
-        await ensureUserInboxRoom(email);
+        // FIX: Removed blocking 'await'. Background execution ensures quick auth token release.
+        ensureUserInboxRoom(email).catch((err) =>
+          console.error("Background ensureUserInboxRoom failed:", err)
+        );
         session.allow(room, session.FULL_ACCESS);
       } else {
         return new NextResponse("Forbidden", { status: 403 });
       }
     } else if (room && room.startsWith("space-")) {
-      // Pages & Spaces: space room
       const spaceId = parseInt(room.replace("space-", ""), 10);
 
       if (!isNaN(spaceId)) {
@@ -110,7 +115,6 @@ export async function POST(request: Request) {
         return new NextResponse("Invalid space room", { status: 400 });
       }
     } else if (room && room.startsWith("page-")) {
-      // Pages & Spaces: page room
       const pageId = parseInt(room.replace("page-", ""), 10);
 
       if (!isNaN(pageId)) {
