@@ -24,7 +24,7 @@ import {
   UserRound,
   UsersRound,
 } from "lucide-react";
-import { useClerk } from "@clerk/nextjs";
+import { UserButton, useClerk } from "@clerk/nextjs";
 import * as React from "react";
 
 import { Button } from "@/components/ui/button";
@@ -506,8 +506,6 @@ export function DashboardPage({
         </div>
 
         <aside className="space-y-4">
-          <SettingsPanel data={data} saving={saving} saveProfile={saveProfile} saveAvatar={saveAvatar} savePreferences={savePreferences} />
-
           <div className="rounded-lg border border-border bg-card p-4 shadow-soft">
             <div className="flex items-center justify-between">
               <p className="text-sm font-semibold">Data Export</p>
@@ -682,6 +680,101 @@ export function DashboardPage({
   );
 }
 
+export function SettingsPage() {
+  const [data, setData] = React.useState<DashboardData | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+  const [saving, setSaving] = React.useState<string | null>(null);
+
+  const reload = React.useCallback(async () => {
+    setError(null);
+    try {
+      const payload = await readJson(await fetch("/api/dashboard", { cache: "no-store" }));
+      setData(payload as DashboardData);
+    } catch (fetchError) {
+      setError(fetchError instanceof Error ? fetchError.message : "Unable to load settings");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    void reload();
+  }, [reload]);
+
+  async function saveProfile(formData: FormData) {
+    setSaving("profile");
+    try {
+      await readJson(
+        await fetch("/api/me", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: formData.get("name"),
+            email: formData.get("email"),
+          }),
+        })
+      );
+      await reload();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Unable to save profile");
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function savePreferences(patch: Partial<DashboardData["preferences"]>) {
+    if (!data) return;
+    setSaving("preferences");
+    try {
+      const payload = await readJson(
+        await fetch("/api/preferences", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...data.preferences, ...patch }),
+        })
+      );
+      setData({ ...data, preferences: payload.preferences });
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Unable to save preferences");
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="grid gap-4 px-4 py-5 lg:px-6">
+        <div className="h-72 animate-pulse rounded-lg border border-border bg-card" />
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="px-4 py-5 lg:px-6">
+        <div className="rounded-lg border border-destructive/25 bg-red-50 p-4 text-sm text-destructive">
+          {error ?? "Settings are unavailable."}
+          <Button type="button" variant="outline" className="ml-3 h-8 bg-white text-xs" onClick={() => void reload()}>
+            Retry
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto w-full max-w-3xl px-4 py-5 lg:px-6">
+      {error && (
+        <div className="mb-4 rounded-lg border border-destructive/25 bg-red-50 px-3 py-2 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+      <SettingsPanel data={data} saving={saving} saveProfile={saveProfile} savePreferences={savePreferences} />
+    </div>
+  );
+}
+
 function Stat({ label, value }: { label: string; value: number }) {
   return (
     <div className="rounded-lg border border-border bg-white p-3">
@@ -734,13 +827,11 @@ function SettingsPanel({
   data,
   saving,
   saveProfile,
-  saveAvatar,
   savePreferences,
 }: {
   data: DashboardData;
   saving: string | null;
   saveProfile: (formData: FormData) => Promise<void>;
-  saveAvatar: (formData: FormData) => Promise<void>;
   savePreferences: (patch: Partial<DashboardData["preferences"]>) => Promise<void>;
 }) {
   const { signOut } = useClerk();
@@ -767,18 +858,15 @@ function SettingsPanel({
         </Button>
       </form>
 
-      <form action={(formData) => void saveAvatar(formData)} className="mt-3 space-y-2">
-        <Label className="text-xs">Avatar URL</Label>
-        <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
-          <Input name="imageUrl" defaultValue={data.profile.imageUrl ?? ""} className="h-9 text-xs" />
-          <Button type="submit" variant="outline" className="h-9 bg-white text-xs" disabled={saving === "avatar"}>
-            Update
-          </Button>
+      <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-border bg-white p-3">
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground">Profile picture</p>
+          <p className="mt-1 text-xs text-muted-foreground">Managed by Clerk</p>
         </div>
-      </form>
+        <UserButton userProfileMode="modal" />
+      </div>
 
       <div className="mt-4 space-y-3 border-t border-border pt-4">
-        <PreferenceSelect label="Theme" value={data.preferences.theme} values={["system", "light", "dark"]} onChange={(theme) => void savePreferences({ theme: theme as DashboardData["preferences"]["theme"] })} />
         <PreferenceSelect label="Default calendar view" value={data.preferences.defaultCalendarView} values={["month", "week"]} onChange={(defaultCalendarView) => void savePreferences({ defaultCalendarView: defaultCalendarView as "month" | "week" })} />
         <PreferenceSelect label="Default task priority" value={data.preferences.defaultTaskPriority} values={["Low", "Medium", "High"]} onChange={(defaultTaskPriority) => void savePreferences({ defaultTaskPriority: defaultTaskPriority as "Low" | "Medium" | "High" })} />
         <ToggleRow icon={Bell} label="Notifications" checked={data.preferences.notifications} onChange={(notifications) => void savePreferences({ notifications })} />

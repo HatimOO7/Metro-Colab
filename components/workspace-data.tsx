@@ -1,5 +1,6 @@
 "use client";
 
+import { useAuth } from "@clerk/nextjs";
 import * as React from "react";
 
 import {
@@ -154,6 +155,7 @@ export function WorkspaceDataProvider({
   onNavigateToKanban,
   onNavigateToCalendar,
 }: WorkspaceDataProviderProps) {
+  const { isLoaded, userId } = useAuth();
   const [searchQuery, setSearchQuery] = React.useState("");
   const [createBoardRequested, setCreateBoardRequested] = React.useState(false);
   const [pendingKanbanTaskEdit, setPendingKanbanTaskEdit] = React.useState<PendingKanbanTaskEdit | null>(null);
@@ -222,6 +224,11 @@ export function WorkspaceDataProvider({
   }, []);
 
   const reloadInvitations = React.useCallback(async () => {
+    if (!userId) {
+      setPendingInvitations([]);
+      return;
+    }
+
     try {
       const response = await fetch("/api/kanban/invitations", { cache: "no-store" });
       const payload = await readJson(response);
@@ -229,9 +236,14 @@ export function WorkspaceDataProvider({
     } catch (error) {
       console.error("Failed to load invitations", error);
     }
-  }, []);
+  }, [userId]);
 
   const reloadWhiteboardInvitations = React.useCallback(async () => {
+    if (!userId) {
+      setPendingWhiteboardInvitations([]);
+      return;
+    }
+
     try {
       const response = await fetch("/api/whiteboards/invitations", { cache: "no-store" });
       const payload = await readJson(response);
@@ -239,9 +251,14 @@ export function WorkspaceDataProvider({
     } catch (error) {
       console.error("Failed to load whiteboard invitations", error);
     }
-  }, []);
+  }, [userId]);
 
   const reloadSpaceInvitations = React.useCallback(async () => {
+    if (!userId) {
+      setPendingSpaceInvitations([]);
+      return;
+    }
+
     try {
       const response = await fetch("/api/spaces/invitations", { cache: "no-store" });
       const payload = await readJson(response);
@@ -249,7 +266,7 @@ export function WorkspaceDataProvider({
     } catch (error) {
       console.error("Failed to load space invitations", error);
     }
-  }, []);
+  }, [userId]);
 
   const acceptInvitation = React.useCallback(async (boardId: number) => {
     await fetch(`/api/kanban/invitations/${boardId}/accept`, { method: "POST" });
@@ -291,12 +308,16 @@ export function WorkspaceDataProvider({
   }, []);
 
   React.useEffect(() => {
+    if (!isLoaded || !userId) {
+      return;
+    }
+
     void reloadCalendarItems();
     void reloadKanbanBoards();
     void reloadInvitations();
     void reloadWhiteboardInvitations();
     void reloadSpaceInvitations();
-  }, [reloadCalendarItems, reloadKanbanBoards, reloadInvitations, reloadWhiteboardInvitations, reloadSpaceInvitations]);
+  }, [isLoaded, userId, reloadCalendarItems, reloadKanbanBoards, reloadInvitations, reloadWhiteboardInvitations, reloadSpaceInvitations]);
 
   const createCalendarItem = React.useCallback(async (input: Omit<CalendarItem, "id">) => {
     const response = await fetch("/api/calendar-items", {

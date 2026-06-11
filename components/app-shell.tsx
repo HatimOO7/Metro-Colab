@@ -17,16 +17,16 @@ import {
   Pin,
   Plus,
   Search,
+  Settings,
   Sparkles,
   StickyNote,
   Trash2,
-  UsersRound,
   X,
 } from "lucide-react";
 import * as React from "react";
 
 import { Button } from "@/components/ui/button";
-import { DashboardPage } from "@/components/dashboard-page";
+import { DashboardPage, SettingsPage } from "@/components/dashboard-page";
 import { KanbanBoardPage } from "@/components/kanban-board";
 import { NotesPage } from "@/components/notes-page";
 import { IncomingCallProvider } from "@/components/whiteboard/incoming-call-provider";
@@ -81,6 +81,7 @@ const menuGroups: { label: string; items: MenuItem[] }[] = [
       { label: "Dashboard", icon: LayoutDashboard, color: "text-coral-600" },
       { label: "Calendar", icon: CalendarDays, color: "text-sky-600" },
       { label: "Task / Kanban", icon: ClipboardCheck, color: "text-emerald-600" },
+      { label: "Settings", icon: Settings, color: "text-slate-600" },
     ],
   },
   {
@@ -246,6 +247,7 @@ function AppShellContent({
   const isWhiteboard = activeItem === "Whiteboard";
   const isPagesSpaces = activeItem === "Pages / Spaces";
   const isAiBuilder = activeItem === "AI Template Builder";
+  const isSettings = activeItem === "Settings";
 
   // Pinned AI apps for sidebar
   const [pinnedApps, setPinnedApps] = React.useState<PinnedApp[]>([]);
@@ -419,24 +421,6 @@ function AppShellContent({
               </div>
             )}
           </nav>
-
-          <div className="mt-4 rounded-lg border border-border bg-white/80 p-2">
-            {collapsed ? (
-              <div className="grid place-items-center">
-                <UsersRound className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" />
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <div className="grid h-7 w-7 place-items-center rounded-lg bg-emerald-100 text-emerald-700">
-                  <UsersRound className="h-3.5 w-3.5" aria-hidden="true" />
-                </div>
-                <div className="min-w-0">
-                  <p className="truncate text-[11px] font-semibold">Team workspace</p>
-                  <p className="truncate text-[10px] text-muted-foreground">3 online collaborators</p>
-                </div>
-              </div>
-            )}
-          </div>
         </aside>
 
         <section className={cn("flex min-w-0 flex-1 flex-col overflow-y-auto", isWhiteboard && "overflow-hidden", isPagesSpaces && "overflow-hidden")}>
@@ -469,6 +453,8 @@ function AppShellContent({
                 setActiveItem(`app-${id}`);
               }}
             />
+          ) : isSettings ? (
+            <SettingsPage />
           ) : (
             <DashboardPage
               onCreateTask={handleCreateTask}
