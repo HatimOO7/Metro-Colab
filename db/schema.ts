@@ -16,6 +16,105 @@ export const users = pgTable("users", {
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 
+export type UserPreferencesData = {
+  theme: "system" | "light" | "dark";
+  notifications: boolean;
+  defaultCalendarView: "month" | "week";
+  defaultTaskPriority: "Low" | "Medium" | "High";
+  autoSave: boolean;
+  privacy: {
+    showProfileToCollaborators: boolean;
+    allowUserSearch: boolean;
+  };
+};
+
+export const userPreferences = pgTable(
+  "user_preferences",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    preferences: jsonb("preferences").$type<UserPreferencesData>().notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [uniqueIndex("user_preferences_user_idx").on(table.userId)]
+);
+
+export type UserPreferences = typeof userPreferences.$inferSelect;
+export type NewUserPreferences = typeof userPreferences.$inferInsert;
+
+export const userCategories = pgTable(
+  "user_categories",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    scope: text("scope").notNull(),
+    name: text("name").notNull(),
+    color: text("color").notNull(),
+    icon: text("icon").notNull().default("Tag"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("user_categories_user_scope_idx").on(table.userId, table.scope),
+    uniqueIndex("user_categories_unique_name_idx").on(table.userId, table.scope, table.name),
+  ]
+);
+
+export type UserCategory = typeof userCategories.$inferSelect;
+export type NewUserCategory = typeof userCategories.$inferInsert;
+
+export const activityEvents = pgTable(
+  "activity_events",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    type: text("type").notNull(),
+    module: text("module").notNull(),
+    resourceType: text("resource_type").notNull(),
+    resourceId: integer("resource_id"),
+    title: text("title").notNull(),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("activity_events_user_created_idx").on(table.userId, table.createdAt),
+    index("activity_events_resource_idx").on(table.resourceType, table.resourceId),
+  ]
+);
+
+export type ActivityEvent = typeof activityEvents.$inferSelect;
+export type NewActivityEvent = typeof activityEvents.$inferInsert;
+
+export const resourceViews = pgTable(
+  "resource_views",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    resourceType: text("resource_type").notNull(),
+    resourceId: integer("resource_id").notNull(),
+    title: text("title").notNull(),
+    module: text("module").notNull(),
+    lastViewedAt: timestamp("last_viewed_at").defaultNow().notNull(),
+    lastEditedAt: timestamp("last_edited_at"),
+  },
+  (table) => [
+    index("resource_views_user_recent_idx").on(table.userId, table.lastViewedAt),
+    uniqueIndex("resource_views_unique_resource_idx").on(table.userId, table.resourceType, table.resourceId),
+  ]
+);
+
+export type ResourceView = typeof resourceViews.$inferSelect;
+export type NewResourceView = typeof resourceViews.$inferInsert;
+
 export const calendarItems = pgTable("calendar_items", {
   id: serial("id").primaryKey(),
   userId: integer("user_id")

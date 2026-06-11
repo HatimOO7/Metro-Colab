@@ -2,14 +2,11 @@
 
 import {
   Bell,
-  Bot,
   CalendarDays,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
   ClipboardCheck,
-  Clock3,
-  FileText,
   GripVertical,
   LayoutDashboard,
   Layers3,
@@ -20,17 +17,16 @@ import {
   Pin,
   Plus,
   Search,
-  Settings,
   Sparkles,
   StickyNote,
   Trash2,
   UsersRound,
   X,
-  Zap,
 } from "lucide-react";
 import * as React from "react";
 
 import { Button } from "@/components/ui/button";
+import { DashboardPage } from "@/components/dashboard-page";
 import { KanbanBoardPage } from "@/components/kanban-board";
 import { NotesPage } from "@/components/notes-page";
 import { IncomingCallProvider } from "@/components/whiteboard/incoming-call-provider";
@@ -83,7 +79,6 @@ const menuGroups: { label: string; items: MenuItem[] }[] = [
     label: "Workspace",
     items: [
       { label: "Dashboard", icon: LayoutDashboard, color: "text-coral-600" },
-      { label: "AI Assistant", icon: Bot, color: "text-violet-600" },
       { label: "Calendar", icon: CalendarDays, color: "text-sky-600" },
       { label: "Task / Kanban", icon: ClipboardCheck, color: "text-emerald-600" },
     ],
@@ -97,25 +92,7 @@ const menuGroups: { label: string; items: MenuItem[] }[] = [
       { label: "AI Template Builder", icon: Sparkles, color: "text-orange-600" },
     ],
   },
-  {
-    label: "System",
-    items: [{ label: "Settings", icon: Settings, color: "text-slate-600" }],
-  },
 ];
-
-const spaces = [
-  { name: "Launch OS", meta: "12 docs", tint: "bg-coral-100 text-coral-700" },
-  { name: "Design Lab", meta: "8 boards", tint: "bg-sky-100 text-sky-700" },
-  { name: "Research Notes", meta: "24 cards", tint: "bg-emerald-100 text-emerald-700" },
-];
-
-const dashboardTasks = [
-  { title: "Refine onboarding map", status: "In review", color: "bg-amber-100 text-amber-700" },
-  { title: "Draft AI template prompts", status: "Today", color: "bg-violet-100 text-violet-700" },
-  { title: "Sync launch calendar", status: "Next", color: "bg-sky-100 text-sky-700" },
-];
-
-const notes = ["Weekly planning ritual", "Workspace navigation patterns", "Whiteboard export ideas"];
 
 const categories: Category[] = [
   {
@@ -263,6 +240,7 @@ function AppShellContent({
 }) {
   const [collapsed, setCollapsed] = React.useState(false);
   const { requestCreateBoard } = useWorkspaceData();
+  const [calendarCreateReminderRequested, setCalendarCreateReminderRequested] = React.useState(false);
   const isCalendar = activeItem === "Calendar";
   const isKanban = activeItem === "Task / Kanban";
   const isWhiteboard = activeItem === "Whiteboard";
@@ -307,6 +285,25 @@ function AppShellContent({
   const handleNewSpace = () => {
     setActiveItem("Task / Kanban");
     requestCreateBoard();
+  };
+
+  const handleCreateTask = () => {
+    setActiveItem("Task / Kanban");
+    requestCreateBoard();
+  };
+
+  const handleCreateNote = React.useCallback(async () => {
+    const response = await fetch("/api/notes", { method: "POST" });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.error ?? "Unable to create note");
+    }
+    setActiveItem("Notes");
+  }, [setActiveItem]);
+
+  const handleCreateReminder = () => {
+    setActiveItem("Calendar");
+    setCalendarCreateReminderRequested(true);
   };
 
   return (
@@ -453,7 +450,10 @@ function AppShellContent({
               }}
             />
           ) : isCalendar ? (
-            <CalendarPlanner />
+            <CalendarPlanner
+              createReminderRequested={calendarCreateReminderRequested}
+              onCreateReminderConsumed={() => setCalendarCreateReminderRequested(false)}
+            />
           ) : isKanban ? (
             <KanbanBoardPage />
           ) : activeItem === "Notes" ? (
@@ -470,7 +470,13 @@ function AppShellContent({
               }}
             />
           ) : (
-            <DashboardContent />
+            <DashboardPage
+              onCreateTask={handleCreateTask}
+              onCreateNote={handleCreateNote}
+              onCreateReminder={handleCreateReminder}
+              onOpenWhiteboard={() => setActiveItem("Whiteboard")}
+              onCreateTemplate={() => setActiveItem("AI Template Builder")}
+            />
           )}
         </section>
       </div>
@@ -682,260 +688,20 @@ function AppHeader({ activeItem, onNewSpace }: { activeItem: string; onNewSpace:
   );
 }
 
-function DashboardContent() {
-  const {
-    pendingInvitations,
-    acceptInvitation,
-    rejectInvitation,
-    pendingWhiteboardInvitations,
-    acceptWhiteboardInvitation,
-    rejectWhiteboardInvitation,
-    pendingSpaceInvitations,
-    acceptSpaceInvitation,
-    rejectSpaceInvitation,
-  } = useWorkspaceData();
-
-  const hasInvitations =
-    pendingInvitations.length > 0 ||
-    pendingWhiteboardInvitations.length > 0 ||
-    pendingSpaceInvitations.length > 0;
-
-  return (
-    <div className="grid gap-4 px-4 py-5 lg:grid-cols-[1.5fr_1fr] lg:px-6">
-      <section className="space-y-4">
-        {hasInvitations && (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 shadow-soft">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-semibold text-amber-900">Pending Invitations</p>
-                <p className="mt-1 text-xs text-amber-700">
-                  You have been invited to collaborate on these boards.
-                </p>
-              </div>
-            </div>
-            <div className="mt-4 space-y-3">
-              {pendingInvitations.map((board) => (
-                <div key={`kanban-${board.id}`} className="flex items-center justify-between rounded-lg border border-amber-200 bg-white p-3 shadow-sm">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span className="h-4 w-4 shrink-0 rounded-full" style={{ backgroundColor: board.color }} />
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-foreground">{board.name}</p>
-                      <p className="truncate text-[10px] text-muted-foreground">
-                        Kanban · Invited by {board.ownerEmail || "Owner"}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="h-8 rounded-md bg-white text-xs hover:bg-red-50 hover:text-destructive hover:border-red-200"
-                      onClick={() => void rejectInvitation(board.id)}
-                    >
-                      Decline
-                    </Button>
-                    <Button
-                      type="button"
-                      className="h-8 rounded-md bg-emerald-600 text-xs text-white hover:bg-emerald-700"
-                      onClick={() => void acceptInvitation(board.id)}
-                    >
-                      Accept
-                    </Button>
-                  </div>
-                </div>
-              ))}
-              {pendingWhiteboardInvitations.map((board) => (
-                <div key={`whiteboard-${board.id}`} className="flex items-center justify-between rounded-lg border border-amber-200 bg-white p-3 shadow-sm">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span className="h-4 w-4 shrink-0 rounded-full" style={{ backgroundColor: board.color }} />
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-foreground">{board.name}</p>
-                      <p className="truncate text-[10px] text-muted-foreground">
-                        Whiteboard · Invited by {board.ownerName || board.ownerEmail || "Owner"}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="h-8 rounded-md bg-white text-xs hover:bg-red-50 hover:text-destructive hover:border-red-200"
-                      onClick={() => void rejectWhiteboardInvitation(board.id)}
-                    >
-                      Decline
-                    </Button>
-                    <Button
-                      type="button"
-                      className="h-8 rounded-md bg-emerald-600 text-xs text-white hover:bg-emerald-700"
-                      onClick={() => void acceptWhiteboardInvitation(board.id)}
-                    >
-                      Accept
-                    </Button>
-                  </div>
-                </div>
-              ))}
-              {pendingSpaceInvitations.map((invite) => (
-                <div key={`space-${invite.id}`} className="flex items-center justify-between rounded-lg border border-amber-200 bg-white p-3 shadow-sm">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span className="h-4 w-4 shrink-0 rounded-full bg-indigo-500" />
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-foreground">{invite.spaceName}</p>
-                      <p className="truncate text-[10px] text-muted-foreground">
-                        Space · Invited by {invite.inviterName}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="h-8 rounded-md bg-white text-xs hover:bg-red-50 hover:text-destructive hover:border-red-200"
-                      onClick={() => void rejectSpaceInvitation(invite.id)}
-                    >
-                      Decline
-                    </Button>
-                    <Button
-                      type="button"
-                      className="h-8 rounded-md bg-emerald-600 text-xs text-white hover:bg-emerald-700"
-                      onClick={() => void acceptSpaceInvitation(invite.id)}
-                    >
-                      Accept
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="rounded-lg border border-border bg-card p-4 shadow-soft">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <p className="text-sm font-semibold">Focus board</p>
-              <p className="mt-1 max-w-xl text-sm leading-6 text-muted-foreground">
-                A calm overview for tasks, ideas, notes, and async collaboration across your team.
-              </p>
-            </div>
-            <span className="inline-flex w-fit items-center rounded-lg bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-700">
-              Live workspace
-            </span>
-          </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-3">
-            {spaces.map((space) => (
-              <button
-                key={space.name}
-                type="button"
-                className="rounded-lg border border-border bg-white p-3 text-left transition hover:-translate-y-0.5 hover:shadow-soft"
-              >
-                <span className={cn("inline-flex rounded-lg px-2 py-1 text-[11px] font-semibold", space.tint)}>
-                  {space.meta}
-                </span>
-                <p className="mt-3 truncate text-sm font-semibold">{space.name}</p>
-                <p className="mt-1 text-xs text-muted-foreground">Open canvas and docs</p>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="rounded-lg border border-border bg-card p-4 shadow-soft">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold">Task lane</p>
-              <ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-            </div>
-            <div className="mt-4 space-y-2">
-              {dashboardTasks.map((task) => (
-                <div key={task.title} className="rounded-lg border border-border bg-white p-3">
-                  <p className="truncate text-sm font-medium">{task.title}</p>
-                  <span className={cn("mt-2 inline-flex rounded-lg px-2 py-1 text-[11px] font-semibold", task.color)}>
-                    {task.status}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-border bg-card p-4 shadow-soft">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold">Notes pulse</p>
-              <FileText className="h-4 w-4 text-amber-600" aria-hidden="true" />
-            </div>
-            <div className="mt-4 space-y-2">
-              {notes.map((note) => (
-                <button
-                  key={note}
-                  type="button"
-                  className="flex w-full items-center gap-2 rounded-lg border border-border bg-white px-3 py-2 text-left text-sm transition hover:bg-amber-50"
-                >
-                  <StickyNote className="h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" />
-                  <span className="truncate">{note}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <aside className="space-y-4">
-        <div className="rounded-lg border border-border bg-card p-4 shadow-soft">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold">Today</p>
-            <CalendarDays className="h-4 w-4 text-sky-600" aria-hidden="true" />
-          </div>
-          <div className="mt-4 space-y-3">
-            {["Design critique", "AI template review", "Kanban cleanup"].map((event, index) => (
-              <div key={event} className="flex items-center gap-3">
-                <div className="grid h-9 w-9 place-items-center rounded-lg bg-sky-100 text-xs font-semibold text-sky-700">
-                  {index + 1}
-                </div>
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{event}</p>
-                  <p className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <Clock3 className="h-3 w-3" aria-hidden="true" />
-                    {index + 10}:00
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="rounded-lg border border-border bg-foreground p-4 text-background shadow-soft">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold">AI Assistant</p>
-            <Sparkles className="h-4 w-4 text-amber-300" aria-hidden="true" />
-          </div>
-          <p className="mt-3 text-sm leading-6 text-background/75">
-            Draft a meeting brief from the launch notes and turn open questions into task cards.
-          </p>
-          <Button className="mt-4 h-9 w-full rounded-lg bg-background text-xs text-foreground hover:bg-background/90">
-            Generate brief
-          </Button>
-        </div>
-
-        <div className="rounded-lg border border-border bg-card p-4 shadow-soft">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold">Whiteboard activity</p>
-            <ChevronLeft className="h-4 w-4 text-fuchsia-600" aria-hidden="true" />
-          </div>
-          <div className="mt-4 grid grid-cols-3 gap-2">
-            <div className="h-20 rounded-lg bg-coral-100" />
-            <div className="h-20 rounded-lg bg-sky-100" />
-            <div className="h-20 rounded-lg bg-emerald-100" />
-          </div>
-        </div>
-      </aside>
-    </div>
-  );
-}
-
-function CalendarPlanner() {
+function CalendarPlanner({
+  createReminderRequested,
+  onCreateReminderConsumed,
+}: {
+  createReminderRequested: boolean;
+  onCreateReminderConsumed: () => void;
+}) {
   const today = React.useMemo(() => new Date(), []);
   const [view, setView] = React.useState<"month" | "week">("month");
   const [anchorDate, setAnchorDate] = React.useState(today);
   const [dialogDate, setDialogDate] = React.useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [editingItem, setEditingItem] = React.useState<CalendarItem | null>(null);
+  const [newItemType, setNewItemType] = React.useState<CalendarForm["itemType"]>("task");
   const [formError, setFormError] = React.useState<string | null>(null);
   const [actionError, setActionError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
@@ -977,9 +743,10 @@ function CalendarPlanner() {
     }, {});
   }, [scheduledItems]);
 
-  function openDialog(dateKey: string | null) {
+  function openDialog(dateKey: string | null, itemType: CalendarForm["itemType"] = "task") {
     setDialogDate(dateKey);
     setEditingItem(null);
+    setNewItemType(itemType);
     setFormError(null);
     setActionError(null);
     setDialogOpen(true);
@@ -988,10 +755,20 @@ function CalendarPlanner() {
   function openEditDialog(item: CalendarItem) {
     setDialogDate(item.scheduledDate);
     setEditingItem(item);
+    setNewItemType(item.itemType);
     setFormError(null);
     setActionError(null);
     setDialogOpen(true);
   }
+
+  React.useEffect(() => {
+    if (!createReminderRequested) {
+      return;
+    }
+
+    openDialog(toDateKey(today), "reminder");
+    onCreateReminderConsumed();
+  }, [createReminderRequested, onCreateReminderConsumed, today]);
 
   React.useEffect(() => {
     if (!pendingCalendarItemEdit || !calendarReady) {
@@ -1255,6 +1032,7 @@ function CalendarPlanner() {
           saving={saving}
           error={formError}
           item={editingItem}
+          initialItemType={newItemType}
           onClose={() => setDialogOpen(false)}
           onSave={handleSave}
         />
@@ -1420,6 +1198,7 @@ function TaskDialog({
   saving,
   error,
   item,
+  initialItemType,
   onClose,
   onSave,
 }: {
@@ -1427,10 +1206,13 @@ function TaskDialog({
   saving: boolean;
   error: string | null;
   item: CalendarItem | null;
+  initialItemType: CalendarForm["itemType"];
   onClose: () => void;
   onSave: (form: CalendarForm, status: "scheduled" | "draft") => Promise<void>;
 }) {
-  const [form, setForm] = React.useState<CalendarForm>(() => (item ? itemToForm(item) : defaultForm));
+  const [form, setForm] = React.useState<CalendarForm>(() =>
+    item ? itemToForm(item) : { ...defaultForm, itemType: initialItemType }
+  );
   const isEditing = Boolean(item);
 
   function updateForm<Field extends keyof CalendarForm>(field: Field, value: CalendarForm[Field]) {
