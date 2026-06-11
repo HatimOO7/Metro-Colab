@@ -470,19 +470,18 @@ export async function getCollaborationData(
 
   const resources = await Promise.all(
     [
-      ...spaceRows.map(async (space) => {
-        const members = await getSpaceMembers(space.id);
-        return {
-          id: `space-${space.id}`,
-          resourceId: space.id,
-          type: "space",
-          name: space.name,
-          role: space.userId === userId ? "owner" : "collaborator",
-          members: members?.collaborators ?? [],
-          pendingInvites: members?.pendingInvites ?? [],
-          owner: members?.owner ?? null,
-        };
-      }),
+      ...spaceRows.map((space) => {
+  return {
+    id: `space-${space.id}`,
+    resourceId: space.id,
+    type: "space",
+    name: space.name,
+    role: space.userId === userId ? "owner" : "collaborator",
+    members: (space.sharedEmails ?? []).map((email: string) => ({ email, role: "collaborator" })),
+pendingInvites: (space.pendingEmails ?? []).map((email: string) => ({ email })),
+    owner: { email: space.ownerEmail ?? "", role: "owner" },
+  };
+}),
       // Flipped implicit any to explicit string here
       ...boards.map((board) => ({
         id: `kanban-${board.id}`,
