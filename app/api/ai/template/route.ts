@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { syncCurrentUserToDatabase } from "@/lib/sync-user";
 import { createAiTemplate } from "@/lib/ai-templates";
+import { db } from "@/db";
+import { aiTemplateRecords } from "@/db/schema";
 import type { AiTemplateJson } from "@/db/schema";
 
 async function getDatabaseUser() {
@@ -11,49 +13,97 @@ async function getDatabaseUser() {
   }
 }
 
-const SYSTEM_PROMPT = `You are an AI mini-app generator. Given a user prompt, output ONLY valid JSON (no markdown, no explanation) matching this exact schema:
+const SYSTEM_PROMPT = `You are an AI mini-app schema generator. Given a user prompt, output ONLY valid JSON (no markdown block, no markdown, no explanations) matching this exact schema:
 
 {
-  "appName": "string — short title of the app",
+  "appName": "string — short name of the app",
   "description": "string — 1-2 sentence description",
-  "icon": "string — one of: Flame, Target, Apple, BookOpen, DollarSign, Heart, Star, Zap, Coffee, Music, Camera, Globe, Briefcase, Clock, Trophy, Leaf, Moon, Sun, Activity, CheckSquare",
-  "color": "string — hex color like #F97316 that matches the app theme",
-  "layout": "single-page",
-  "initialState": { "listItems": [{ "id": "1", "label": "Drink Water", "completed": false }] },
-  "sections": [
+  "icon": "string — Lucide icon name, e.g. Flame, Target, Apple, BookOpen, DollarSign, Heart, Star, Zap, Coffee, Music, Camera, Globe, Briefcase, Clock, Trophy, Leaf, Moon, Sun, Activity, CheckSquare",
+  "color": "string — hex color code for the app theme",
+  "entities": [
     {
-      "id": "unique-section-id",
-      "type": "stats | list | table | form | progress | checklist | tags | chart | button",
-      "title": "Section Title",
-      "data": { ... section-specific data ... },
-      "dataSource": "listItems",
-      "action": "TOGGLE_ITEM | ADD_ITEM | DELETE_ITEM",
-      "target": "listItems"
+      "name": "string — entity key (plural lowercase, e.g. 'tasks', 'habits')",
+      "label": "string — human-friendly label (singular, e.g. 'Task', 'Habit')",
+      "fields": [
+        {
+          "name": "string — field key (camelCase, e.g. 'title', 'dueDate', 'amount')",
+          "label": "string — human-friendly field label",
+          "type": "text | number | date | select | boolean | textarea",
+          "required": true | false,
+          "options": ["string"] // only when type is 'select'
+        }
+      ]
+    }
+  ],
+  "forms": [
+    {
+      "id": "string — unique form ID",
+      "title": "string — form title",
+      "entity": "string — target entity name (plural lowercase)",
+      "fields": [
+        {
+          "name": "string — name of entity field",
+          "label": "string — field label override if any",
+          "type": "text | number | date | select | boolean | textarea",
+          "placeholder": "string — input placeholder",
+          "required": true | false
+        }
+      ]
+    }
+  ],
+  "widgets": [
+    {
+      "id": "string — unique widget ID",
+      "type": "stats | progress | list | table",
+      "title": "string — widget title",
+      "entity": "string — target entity name (plural lowercase)",
+      // for stats widgets:
+      "items": [
+        {
+          "label": "string — label of statistic",
+          "valueType": "count | sum | avg | max | min",
+          "field": "string — field name to calculate on (optional, required if sum/avg/max/min)",
+          "filter": { "field": "value" } // optional filter condition
+        }
+      ],
+      // for progress widgets:
+      "calculate": "percentage | sum_target",
+      "targetField": "string — field to sum/check (optional)",
+      "filterField": "string — boolean field name to filter on for completion percentage (optional)",
+      "targetValue": 100, // optional target number for progress calculations
+      // for list/table widgets:
+      "searchable": true | false,
+      "filterable": true | false,
+      "filterFields": ["string — field names to filter on"],
+      "displayFields": ["string — field names to display in columns/list"],
+      "actions": ["string — action IDs from actions array"]
     }
   ],
   "actions": [
-    { "label": "Button label", "variant": "primary | secondary | destructive", "action": "CLEAR_ALL", "target": "listItems" }
+    {
+      "id": "string — unique action ID",
+      "label": "string — label of action button",
+      "type": "create | update | delete",
+      "entity": "string — target entity name (plural lowercase)",
+      "fields": { "field": "value" } // for updates, what field value changes to (e.g. { "completed": "toggle" })
+    }
   ],
-  "sampleData": [{ ... sample records relevant to this app ... }]
+  "sampleData": {
+    "entityName": [
+      {
+        "field1": "value",
+        "field2": 123
+      }
+    ]
+  }
 }
 
-Section data shapes by type:
-- stats: { "items": [{ "label": "...", "value": "...", "icon": "...", "trend": "+5%" }] }
-- list: { "items": ["item 1", "item 2", ...] } // can also use dataSource
-- table: { "headers": ["Col1", "Col2"], "rows": [["val1", "val2"], ...] }
-- form: { "fields": [{ "name": "...", "label": "...", "type": "text|number|date|select", "placeholder": "..." }] }
-- progress: { "items": [{ "label": "...", "value": 65, "color": "#F97316" }] }
-- checklist: { "items": [{ "id": "1", "label": "...", "checked": false }] } // can also use dataSource
-- tags: { "items": [{ "label": "...", "color": "#hex" }] }
-- chart: { "title": "...", "type": "bar|line|pie", "placeholder": "Chart visualization" }
-- button: { "label": "...", "variant": "primary|secondary" }
-
-CRITICAL RULES FOR INTERACTIVITY:
-- Include a robust \`initialState\` object with relevant arrays or objects to make the app interactive.
-- When generating a \`form\` section, include \`action: "ADD_ITEM"\` and \`target: "your_array_key"\` so it pushes the new item there. Fields should have a \`name\` property.
-- When generating a \`list\` or \`checklist\` section, use \`dataSource: "your_array_key"\` so it binds to the state, and include \`action: "TOGGLE_ITEM"\` if they can be checked off.
-- Make sure to give array items unique \`id\` properties.
-Generate 3-6 meaningful sections appropriate for the app. Include realistic sample data. Keep all text concise.`;
+CRITICAL RULES:
+- Output ONLY valid JSON. Absolutely no explanations, no HTML tags, no markdown blocks (do not wrap in \`\`\`json).
+- The JSON must be fully compliant and parseable.
+- Generate a fully functional application containing entities, forms, widgets, actions, and realistic sample data (at least 2-3 sample records per entity).
+- Ensure all entity names referenced in forms, widgets, and actions match names declared in the entities array.
+- For stats and progress widgets, write query details so the dynamic renderer can compute them on the fly from the database records.`;
 
 function stripJson(text: string): string {
   let result = text.trim();
@@ -95,7 +145,7 @@ async function generateWithGemini(apiKey: string, prompt: string): Promise<AiTem
 
   const parsed = JSON.parse(stripJson(raw)) as AiTemplateJson;
 
-  if (!parsed.appName || !Array.isArray(parsed.sections)) {
+  if (!parsed.appName || !Array.isArray(parsed.entities) || !Array.isArray(parsed.widgets)) {
     throw new Error("Invalid template structure from AI");
   }
 
@@ -103,77 +153,89 @@ async function generateWithGemini(apiKey: string, prompt: string): Promise<AiTem
 }
 
 function mockTemplate(prompt: string): AiTemplateJson {
-  const name = prompt.slice(0, 28) || "My App";
+  const name = prompt.slice(0, 28) || "Habit Tracker";
   return {
     appName: name,
-    description: `A simple ${name.toLowerCase()} to help you stay organized and productive.`,
-    icon: "Target",
-    color: "#6366F1",
-    layout: "single-page",
-    initialState: {
-      tasks: [
-        { id: "t1", label: "Morning routine", checked: true },
-        { id: "t2", label: "Review goals", checked: false },
-        { id: "t3", label: "Evening check-in", checked: false },
-      ]
-    },
-    sections: [
+    description: `A simple ${name.toLowerCase()} app to keep track of your daily routine.`,
+    icon: "Flame",
+    color: "#F97316",
+    entities: [
       {
-        id: "stats-1",
+        name: "habits",
+        label: "Habit",
+        fields: [
+          { name: "name", label: "Habit Name", type: "text", required: true },
+          { name: "streak", label: "Streak", type: "number", required: true },
+          { name: "completed", label: "Completed Today", type: "boolean", required: true },
+          { name: "category", label: "Category", type: "select", options: ["Health", "Mind", "Work"], required: false }
+        ]
+      }
+    ],
+    forms: [
+      {
+        id: "add-habit-form",
+        title: "Add New Habit",
+        entity: "habits",
+        fields: [
+          { name: "name", label: "Habit Name", type: "text", placeholder: "e.g. Read for 30 minutes", required: true },
+          { name: "category", label: "Category", type: "select", placeholder: "Select category", required: false }
+        ]
+      }
+    ],
+    widgets: [
+      {
+        id: "stats-widget",
         type: "stats",
-        title: "Overview",
-        data: {
-          items: [
-            { label: "Total Items", value: "12", icon: "CheckSquare", trend: "+3 today" },
-            { label: "Completed", value: "8", icon: "Trophy", trend: "67%" },
-            { label: "Streak", value: "5 days", icon: "Flame", trend: "🔥" },
-          ],
-        },
+        title: "Stats",
+        entity: "habits",
+        items: [
+          { label: "Total Habits", valueType: "count" },
+          { label: "Completed Habits", valueType: "count", filter: { "completed": true } },
+          { label: "Max Streak", valueType: "max", field: "streak" }
+        ]
       },
       {
-        id: "form-1",
-        type: "form",
-        title: "Add New Task",
-        action: "ADD_ITEM",
-        target: "tasks",
-        data: {
-          fields: [
-            { name: "label", label: "Task Description", type: "text", placeholder: "What needs to be done?" }
-          ]
-        }
-      },
-      {
-        id: "checklist-1",
-        type: "checklist",
-        title: "Today's Tasks",
-        dataSource: "tasks",
-        action: "TOGGLE_ITEM",
-        target: "tasks",
-        data: {
-          items: [] // Populated by engine
-        },
-      },
-      {
-        id: "progress-1",
+        id: "progress-widget",
         type: "progress",
-        title: "Weekly Progress",
-        data: {
-          items: [
-            { label: "Goal A", value: 75, color: "#6366F1" },
-            { label: "Goal B", value: 40, color: "#F97316" },
-            { label: "Goal C", value: 90, color: "#10B981" },
-          ],
-        },
+        title: "Completion Progress",
+        entity: "habits",
+        calculate: "percentage",
+        filterField: "completed"
       },
+      {
+        id: "list-widget",
+        type: "list",
+        title: "My Habits",
+        entity: "habits",
+        searchable: true,
+        filterable: true,
+        filterFields: ["category"],
+        displayFields: ["name", "streak", "completed"],
+        actions: ["toggle-complete", "delete"]
+      }
     ],
     actions: [
-      { label: "Add New", variant: "primary" },
-      { label: "Export", variant: "secondary" },
+      {
+        id: "toggle-complete",
+        label: "Toggle Complete",
+        type: "update",
+        entity: "habits",
+        fields: { "completed": "toggle" }
+      },
+      {
+        id: "delete",
+        label: "Delete",
+        type: "delete",
+        entity: "habits"
+      }
     ],
-    sampleData: [
-      { id: 1, name: "Sample Item 1", status: "active", createdAt: new Date().toISOString() },
-      { id: 2, name: "Sample Item 2", status: "done", createdAt: new Date().toISOString() },
-    ],
+    sampleData: {
+      "habits": [
+        { "name": "Drink Water", "streak": 4, "completed": true, "category": "Health" },
+        { "name": "Read Book", "streak": 2, "completed": false, "category": "Mind" },
+        { "name": "Refactor Code", "streak": 10, "completed": true, "category": "Work" }
+      ]
+    }
   };
 }
 
@@ -209,6 +271,27 @@ export async function POST(request: Request) {
     }
 
     const template = await createAiTemplate(user.id, appJson);
+
+    // Seed sample data in the database
+    if (appJson.sampleData) {
+      try {
+        for (const [entityName, records] of Object.entries(appJson.sampleData)) {
+          if (Array.isArray(records)) {
+            for (const record of records) {
+              await db.insert(aiTemplateRecords).values({
+                userId: user.id,
+                templateId: template.id,
+                entityName,
+                data: record as Record<string, unknown>,
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Failed to seed sample data:", err);
+      }
+    }
+
     return NextResponse.json({ template, simulated }, { status: 201 });
   } catch (err) {
     console.error("AI template route error:", err);

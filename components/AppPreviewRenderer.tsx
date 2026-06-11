@@ -30,31 +30,22 @@ import {
   PieChart,
   Check,
   Trash2,
-  ChevronDown,
-  ChevronUp,
+  Edit,
+  X,
+  Search,
   AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type {
-  AiTemplateJson,
-  AiTemplateSection,
-  ActionType,
-  AppState,
-} from "@/db/schema";
+import type { AiTemplateJson } from "@/db/schema";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Icon registry
 // ─────────────────────────────────────────────────────────────────────────────
-
 const ICON_MAP: Record<string, React.ElementType> = {
   Flame, Target, Apple, BookOpen, DollarSign, Heart, Star, Zap, Coffee, Music,
   Camera, Globe, Briefcase, Clock, Trophy, Leaf, Moon, Sun, Activity,
   CheckSquare, TrendingUp, BarChart3, Sparkles, Plus,
 };
-
-// ─────────────────────────────────────────────────────────────────────────────
-// AppIcon — exported for use in builder card
-// ─────────────────────────────────────────────────────────────────────────────
 
 export function AppIcon({
   name,
@@ -68,7 +59,6 @@ export function AppIcon({
   const Icon = ICON_MAP[name] ?? Zap;
   const iconSizes = { sm: "h-4 w-4", md: "h-5 w-5", lg: "h-7 w-7" };
   const paddings = { sm: "h-8 w-8", md: "h-10 w-10", lg: "h-14 w-14" };
-
   return (
     <div
       className={cn("grid shrink-0 place-items-center rounded-xl", paddings[size])}
@@ -79,800 +69,578 @@ export function AppIcon({
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Action dispatcher type
-// ─────────────────────────────────────────────────────────────────────────────
-
-type HandleAction = (
-  actionType: ActionType | string,
-  target?: string,
-  payload?: unknown
-) => void;
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Block renderers
-// ─────────────────────────────────────────────────────────────────────────────
-
-/* ── Stats ── */
-
-function StatsBlock({ data, color }: { data: unknown; color: string }) {
-  const items = (data as { items?: { label: string; value: string; icon?: string; trend?: string }[] })
-    ?.items ?? [];
-
-  if (items.length === 0) return null;
-
-  return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {items.map((item, i) => {
-        const Icon = ICON_MAP[item.icon ?? ""] ?? Activity;
-        return (
-          <div
-            key={i}
-            className="flex items-center gap-3 rounded-xl border border-border bg-white/70 p-4 shadow-sm backdrop-blur-sm transition hover:shadow-md"
-          >
-            <div
-              className="grid h-11 w-11 shrink-0 place-items-center rounded-xl"
-              style={{ backgroundColor: `${color}1a` }}
-            >
-              <Icon className="h-5 w-5" style={{ color }} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-lg font-bold leading-tight text-foreground">{item.value}</p>
-              <p className="mt-0.5 truncate text-xs text-muted-foreground">{item.label}</p>
-              {item.trend && (
-                <p className="mt-1 text-[11px] font-semibold" style={{ color }}>
-                  {item.trend}
-                </p>
-              )}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-/* ── List ── */
-
-function ListBlock({
-  data,
-  section,
-  appState,
-}: {
-  data: unknown;
-  section: AiTemplateSection;
-  appState: AppState;
-}) {
-  const targetKey = section.dataSource ?? section.target;
-  const sourceItems = targetKey ? (appState[targetKey] as unknown[] | undefined) : null;
-
-  const items: string[] = Array.isArray(sourceItems)
-    ? sourceItems.map((it) => {
-      if (typeof it === "string") return it;
-      const obj = it as Record<string, unknown>;
-      return String(obj.label ?? obj.name ?? obj.title ?? JSON.stringify(it));
-    })
-    : ((data as { items?: string[] })?.items ?? []);
-
-  if (items.length === 0) {
-    return <p className="text-sm italic text-muted-foreground">No items yet.</p>;
-  }
-
-  return (
-    <ul className="space-y-2">
-      {items.map((item, i) => (
-        <li key={i} className="flex items-start gap-2.5 text-sm text-foreground">
-          <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/60" />
-          <span>{item}</span>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-/* ── Table ── */
-
-function TableBlock({ data }: { data: unknown }) {
-  const d = data as { headers?: string[]; rows?: string[][] };
-  const headers = d?.headers ?? [];
-  const rows = d?.rows ?? [];
-
-  if (headers.length === 0) return null;
-
-  return (
-    <div className="overflow-x-auto rounded-xl border border-border">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-border bg-muted/40">
-            {headers.map((h, i) => (
-              <th
-                key={i}
-                className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground"
-              >
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, ri) => (
-            <tr
-              key={ri}
-              className="border-b border-border last:border-0 transition hover:bg-muted/20"
-            >
-              {row.map((cell, ci) => (
-                <td key={ci} className="px-4 py-2.5 text-sm text-foreground">
-                  {cell}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-/* ── Form ── */
-
-function FormBlock({
-  data,
-  color,
-  section,
-  appState,
-  handleAction,
-}: {
-  data: unknown;
-  color: string;
-  section: AiTemplateSection;
-  appState: AppState;
-  handleAction: HandleAction;
-}) {
-  const fields =
-    (data as { fields?: { name?: string; label: string; type: string; placeholder?: string; stateKey?: string; required?: boolean; options?: string[] }[] })
-      ?.fields ?? [];
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!section.action || !section.target) return;
-
-    // Collect field values from appState
-    const payload: Record<string, unknown> = {};
-    fields.forEach((f) => {
-      const key = f.stateKey ?? f.name ?? f.label;
-      payload[key] = appState[key] ?? "";
-    });
-
-    handleAction(section.action, section.target, payload);
-
-    // Clear form fields from appState after submission
-    fields.forEach((f) => {
-      const key = f.stateKey ?? f.name ?? f.label;
-      handleAction("UPDATE_FIELD", key, "");
-    });
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-3">
-      <div className="grid gap-3 sm:grid-cols-2">
-        {fields.map((field, i) => {
-          const key = field.stateKey ?? field.name ?? field.label;
-          const value = String(appState[key] ?? "");
-          const inputClass =
-            "h-9 w-full rounded-lg border border-border bg-white px-3 text-sm text-foreground placeholder:text-muted-foreground/70 outline-none transition focus:border-transparent focus:ring-2";
-
-          return (
-            <div key={i} className="flex flex-col gap-1">
-              <label className="text-xs font-semibold text-foreground">
-                {field.label}
-                {field.required && <span className="ml-0.5 text-destructive">*</span>}
-              </label>
-
-              {field.type === "select" && field.options ? (
-                <select
-                  value={value}
-                  onChange={(e) => handleAction("UPDATE_FIELD", key, e.target.value)}
-                  className={inputClass}
-                  style={{ ["--tw-ring-color" as string]: `${color}60` }}
-                  required={field.required}
-                >
-                  <option value="">{field.placeholder ?? "Select…"}</option>
-                  {(field.options as any[]).map((opt) => {
-                    // Jodi object hoy tahole opt.value/opt.label use korbe, 
-                    // ar jodi string hoy tahole direct opt-tai use korbe.
-                    const value = typeof opt === "string" ? opt : opt?.value;
-                    const label = typeof opt === "string" ? opt : opt?.label;
-
-                    return (
-                      <option key={value} value={value}>
-                        {label}
-                      </option>
-                    );
-                  })}
-                </select>
-              ) : field.type === "textarea" ? (
-                <textarea
-                  value={value}
-                  onChange={(e) => handleAction("UPDATE_FIELD", key, e.target.value)}
-                  placeholder={field.placeholder}
-                  rows={3}
-                  className={cn(inputClass, "h-auto resize-none py-2")}
-                  style={{ ["--tw-ring-color" as string]: `${color}60` }}
-                  required={field.required}
-                />
-              ) : (
-                <input
-                  type={field.type ?? "text"}
-                  value={value}
-                  onChange={(e) => handleAction("UPDATE_FIELD", key, e.target.value)}
-                  placeholder={field.placeholder}
-                  className={inputClass}
-                  style={{ ["--tw-ring-color" as string]: `${color}60` }}
-                  required={field.required}
-                />
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="flex justify-end pt-1">
-        <button
-          type="submit"
-          className="inline-flex h-9 items-center gap-2 rounded-lg px-5 text-sm font-semibold text-white shadow-sm transition hover:opacity-90 active:scale-[0.98]"
-          style={{ backgroundColor: color }}
-        >
-          <Plus className="h-4 w-4" />
-          Add
-        </button>
-      </div>
-    </form>
-  );
-}
-
-/* ── Progress ── */
-
-function ProgressBlock({ data }: { data: unknown }) {
-  const items =
-    (data as { items?: { label: string; value: number; color?: string }[] })?.items ?? [];
-
-  return (
-    <div className="space-y-4">
-      {items.map((item, i) => {
-        const pct = Math.min(100, Math.max(0, item.value));
-        return (
-          <div key={i}>
-            <div className="mb-1.5 flex items-center justify-between">
-              <span className="text-sm font-medium text-foreground">{item.label}</span>
-              <span className="text-xs font-bold tabular-nums text-muted-foreground">{pct}%</span>
-            </div>
-            <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted">
-              <div
-                className="h-full rounded-full transition-all duration-700 ease-out"
-                style={{ width: `${pct}%`, backgroundColor: item.color ?? "#6366F1" }}
-              />
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-/* ── Checklist ── */
-
-function ChecklistBlock({
-  data,
-  color,
-  section,
-  appState,
-  handleAction,
-}: {
-  data: unknown;
-  color: string;
-  section: AiTemplateSection;
-  appState: AppState;
-  handleAction: HandleAction;
-}) {
-  const targetKey = section.dataSource ?? section.target;
-  const sourceItems = targetKey ? (appState[targetKey] as unknown[] | undefined) : null;
-
-  type CheckItem = { id?: string; label?: string; name?: string; checked?: boolean; completed?: boolean };
-  const items: CheckItem[] = Array.isArray(sourceItems)
-    ? (sourceItems as CheckItem[])
-    : ((data as { items?: CheckItem[] })?.items ?? []);
-
-  if (items.length === 0) {
-    return <p className="text-sm italic text-muted-foreground">No items yet.</p>;
-  }
-
-  const checkedCount = items.filter((it) => it.checked ?? it.completed ?? false).length;
-  const totalCount = items.length;
-
-  return (
-    <div className="space-y-1">
-      {/* Completion bar */}
-      {totalCount > 0 && (
-        <div className="mb-3 flex items-center gap-2">
-          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-            <div
-              className="h-full rounded-full transition-all duration-500"
-              style={{ width: `${(checkedCount / totalCount) * 100}%`, backgroundColor: color }}
-            />
-          </div>
-          <span className="shrink-0 text-xs font-semibold tabular-nums text-muted-foreground">
-            {checkedCount}/{totalCount}
-          </span>
-        </div>
-      )}
-
-      <ul className="space-y-1">
-        {items.map((item, i) => {
-          const isChecked = item.checked ?? item.completed ?? false;
-          const itemId = item.id ?? String(i);
-
-          return (
-            <li key={itemId} className="group flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => {
-                  const actionTarget = targetKey ?? section.target;
-                  if (actionTarget) {
-                    handleAction(section.action ?? "TOGGLE_ITEM", actionTarget, { id: itemId });
-                  }
-                }}
-                className="flex flex-1 items-center gap-3 rounded-lg px-2 py-1.5 text-left transition hover:bg-muted/50 active:scale-[0.99]"
-              >
-                <div
-                  className={cn(
-                    "grid h-5 w-5 shrink-0 place-items-center rounded border-2 transition-all duration-200",
-                    isChecked ? "border-transparent scale-105" : "border-border bg-white"
-                  )}
-                  style={isChecked ? { backgroundColor: color, borderColor: color } : {}}
-                >
-                  {isChecked && <Check className="h-3 w-3 text-white" strokeWidth={3} />}
-                </div>
-                <span
-                  className={cn(
-                    "text-sm transition-all duration-200",
-                    isChecked ? "text-muted-foreground line-through" : "text-foreground"
-                  )}
-                >
-                  {item.label ?? item.name ?? "Untitled"}
-                </span>
-              </button>
-
-              {/* Delete button — visible on hover */}
-              {targetKey && (
-                <button
-                  type="button"
-                  onClick={() => handleAction("DELETE_ITEM", targetKey, { id: itemId })}
-                  className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-muted-foreground/50 opacity-0 transition hover:bg-red-50 hover:text-destructive group-hover:opacity-100"
-                  aria-label="Delete item"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
-}
-
-/* ── Tags ── */
-
-function TagsBlock({ data }: { data: unknown }) {
-  const tags = (data as { items?: { label: string; color?: string }[] })?.items ?? [];
-
-  return (
-    <div className="flex flex-wrap gap-2">
-      {tags.map((tag, i) => (
-        <span
-          key={i}
-          className="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold transition hover:opacity-80"
-          style={{
-            backgroundColor: `${tag.color ?? "#6366F1"}1a`,
-            color: tag.color ?? "#6366F1",
-          }}
-        >
-          {tag.label}
-        </span>
-      ))}
-    </div>
-  );
-}
-
-/* ── Chart (Placeholder) ── */
-
-function ChartBlock({ data, color }: { data: unknown; color: string }) {
-  const d = data as { title?: string; chartType?: string; type?: string };
-  const chartType = d?.chartType ?? d?.type ?? "bar";
-  const ChartIcon =
-    chartType === "pie" ? PieChart : chartType === "line" ? TrendingUp : BarChart3;
-
-  return (
-    <div
-      className="flex h-44 flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed"
-      style={{ borderColor: `${color}40`, backgroundColor: `${color}08` }}
-    >
-      <ChartIcon className="h-10 w-10" style={{ color: `${color}60` }} />
-      <div className="text-center">
-        <p className="text-sm font-semibold text-foreground">{d?.title ?? "Chart Visualization"}</p>
-        <p className="mt-0.5 text-xs text-muted-foreground capitalize">{chartType} chart</p>
-      </div>
-    </div>
-  );
-}
-
-/* ── Button ── */
-
-function ButtonBlock({
-  data,
-  color,
-  section,
-  handleAction,
-}: {
-  data: unknown;
-  color: string;
-  section: AiTemplateSection;
-  handleAction: HandleAction;
-}) {
-  const d = data as { label?: string; variant?: string };
-  const isSecondary = d?.variant === "secondary";
-
-  return (
-    <button
-      type="button"
-      onClick={() => {
-        if (section.action && section.target) {
-          handleAction(section.action, section.target);
-        }
-      }}
-      className="h-10 rounded-xl px-6 text-sm font-semibold shadow-sm transition hover:opacity-90 active:scale-[0.97]"
-      style={
-        isSecondary
-          ? { backgroundColor: `${color}1a`, color }
-          : { backgroundColor: color, color: "#fff" }
-      }
-    >
-      {d?.label ?? "Action"}
-    </button>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Section wrapper with optional collapse
-// ─────────────────────────────────────────────────────────────────────────────
-
-function Section({
-  section,
-  color,
-  appState,
-  handleAction,
-}: {
-  section: AiTemplateSection;
-  color: string;
-  appState: AppState;
-  handleAction: HandleAction;
-}) {
-  const [collapsed, setCollapsed] = React.useState(false);
-  const isCollapsible = section.collapsible ?? false;
-
-  return (
-    <div className="rounded-2xl border border-border bg-card/90 shadow-sm backdrop-blur-sm transition hover:shadow-md">
-      {section.title && (
-        <div
-          className={cn(
-            "flex items-center justify-between px-5 py-3.5",
-            !collapsed ? "border-b border-border/60" : ""
-          )}
-        >
-          <h3 className="text-sm font-semibold text-foreground">{section.title}</h3>
-          {isCollapsible && (
-            <button
-              type="button"
-              onClick={() => setCollapsed((c) => !c)}
-              className="grid h-6 w-6 place-items-center rounded-md text-muted-foreground transition hover:bg-muted"
-            >
-              {collapsed ? (
-                <ChevronDown className="h-4 w-4" />
-              ) : (
-                <ChevronUp className="h-4 w-4" />
-              )}
-            </button>
-          )}
-        </div>
-      )}
-
-      {!collapsed && (
-        <div className={cn("px-5", section.title ? "py-4" : "py-5")}>
-          {section.type === "stats" && <StatsBlock data={section.data} color={color} />}
-          {section.type === "list" && (
-            <ListBlock data={section.data} section={section} appState={appState} />
-          )}
-          {section.type === "table" && <TableBlock data={section.data} />}
-          {section.type === "form" && (
-            <FormBlock
-              data={section.data}
-              color={color}
-              section={section}
-              appState={appState}
-              handleAction={handleAction}
-            />
-          )}
-          {section.type === "progress" && <ProgressBlock data={section.data} />}
-          {section.type === "checklist" && (
-            <ChecklistBlock
-              data={section.data}
-              color={color}
-              section={section}
-              appState={appState}
-              handleAction={handleAction}
-            />
-          )}
-          {section.type === "tags" && <TagsBlock data={section.data} />}
-          {section.type === "chart" && <ChartBlock data={section.data} color={color} />}
-          {section.type === "button" && (
-            <ButtonBlock
-              data={section.data}
-              color={color}
-              section={section}
-              handleAction={handleAction}
-            />
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Saving indicator
-// ─────────────────────────────────────────────────────────────────────────────
-
-function SavingIndicator({ saving }: { saving: boolean }) {
-  return (
-    <div
-      className={cn(
-        "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition-all duration-300",
-        saving
-          ? "bg-amber-50 text-amber-600"
-          : "bg-emerald-50 text-emerald-600"
-      )}
-    >
-      {saving ? (
-        <>
-          <Loader2 className="h-3 w-3 animate-spin" />
-          Saving…
-        </>
-      ) : (
-        <>
-          <Check className="h-3 w-3" />
-          Saved
-        </>
-      )}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Main renderer
-// ─────────────────────────────────────────────────────────────────────────────
-
 interface AppPreviewRendererProps {
   appJson: AiTemplateJson;
   templateId?: number;
+  onBack?: () => void;
 }
 
-export function AppPreviewRenderer({ appJson, templateId }: AppPreviewRendererProps) {
-  const { appName, description, icon, color, sections, actions, initialState } = appJson;
-
-  // ── State ──────────────────────────────────────────────────────────────────
-
-  const [appState, setAppState] = React.useState<AppState>(
-    (initialState as AppState) ?? {}
-  );
-  const [loadingState, setLoadingState] = React.useState<boolean>(!!templateId);
-  const [fetchError, setFetchError] = React.useState<string | null>(null);
+export function AppPreviewRenderer({ appJson, templateId, onBack }: AppPreviewRendererProps) {
+  const { appName, description, icon, color, entities, forms, widgets, actions } = appJson;
+  const [records, setRecords] = React.useState<Record<string, any[]>>({});
+  const [loading, setLoading] = React.useState<boolean>(!!templateId);
+  const [error, setError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState<boolean>(false);
 
-  // ── Refs — keep always-current state without stale closures ───────────────
+  // Search and filter states (per widget ID)
+  const [searchQueries, setSearchQueries] = React.useState<Record<string, string>>({});
+  const [selectedFilters, setSelectedFilters] = React.useState<Record<string, Record<string, string>>>({});
 
-  /**
-   * stateRef always holds the LATEST appState. It is updated synchronously
-   * in the setAppState updater so the debounced save always sends fresh data.
-   */
-  const stateRef = React.useRef<AppState>(appState);
+  // CRUD states
+  const [editingRecord, setEditingRecord] = React.useState<{ id: number; entityName: string; data: Record<string, any> } | null>(null);
+  const [formValues, setFormValues] = React.useState<Record<string, any>>({});
+  const [validationErrors, setValidationErrors] = React.useState<Record<string, string>>({});
 
-  /** Debounce timer handle — cleared & reset on every action */
-  const saveTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  /**
-   * AbortController ref — if a PUT request is still in-flight when the next
-   * debounce fires, we abort the previous request before launching a new one.
-   * This guarantees only the latest state ever reaches the database.
-   */
-  const abortControllerRef = React.useRef<AbortController | null>(null);
-
-  // ── 1. Fetch & merge initial state from server ────────────────────────────
-
-  React.useEffect(() => {
+  // ── 1. Fetch records ──────────────────────────────────────────────────────
+  const fetchRecords = React.useCallback(async () => {
     if (!templateId) return;
-
-    let mounted = true;
-    setLoadingState(true);
-    setFetchError(null);
-
-    fetch(`/api/ai-templates/${templateId}/state`)
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json() as Promise<{ appState: AppState }>;
-      })
-      .then((data) => {
-        if (!mounted) return;
-        // Safe merge: initialState provides defaults, persisted state takes precedence
-        const merged: AppState = {
-          ...((initialState as AppState) ?? {}),
-          ...(data.appState ?? {}),
-        };
-        setAppState(merged);
-        stateRef.current = merged;
-      })
-      .catch((err: unknown) => {
-        if (!mounted) return;
-        const msg = err instanceof Error ? err.message : "Unknown error";
-        console.error(`[AppPreviewRenderer] Failed to load state for template ${templateId}:`, msg);
-        setFetchError("Could not load saved state. Showing defaults.");
-        // Don't block the UI — fall back to initialState
-      })
-      .finally(() => {
-        if (mounted) setLoadingState(false);
-      });
-
-    return () => {
-      mounted = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/ai-templates/${templateId}/records`);
+      if (!res.ok) throw new Error("Failed to load app records");
+      const data = await res.json();
+      setRecords(data.records || {});
+    } catch (err) {
+      console.error(err);
+      setError(err instanceof Error ? err.message : "Failed to load records");
+    } finally {
+      setLoading(false);
+    }
   }, [templateId]);
 
-  // ── Cleanup on unmount ────────────────────────────────────────────────────
-
   React.useEffect(() => {
-    return () => {
-      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-      if (abortControllerRef.current) abortControllerRef.current.abort();
-    };
-  }, []);
+    fetchRecords();
+  }, [fetchRecords]);
 
-  // ── 2. Action dispatcher with debounced, abort-safe persistence ───────────
+  // ── 2. Validation Helper ──────────────────────────────────────────────────
+  const validateForm = (entityName: string, values: Record<string, any>, formFields: any[]) => {
+    const errors: Record<string, string> = {};
+    const entitySchema = entities?.find((e) => e.name === entityName);
+    if (!entitySchema) return errors;
 
-  const handleAction = React.useCallback<HandleAction>(
-    (actionType, target, payload) => {
-      if (!target) return;
+    for (const f of formFields) {
+      const val = values[f.name];
+      const schemaField = entitySchema.fields?.find((sf) => sf.name === f.name);
 
-      setAppState((prev) => {
-        // ── Compute next state ──────────────────────────────────────────────
-        const next = { ...prev };
+      if (f.required && (val === undefined || val === null || val === "")) {
+        errors[f.name] = `${f.label || f.name} is required`;
+        continue;
+      }
 
-        switch (actionType) {
-          case "UPDATE_FIELD": {
-            /**
-             * Deep-merge protection: if the target already holds an object and
-             * the payload is also an object, perform a shallow merge so that
-             * sibling keys in the existing object are not wiped out.
-             */
-            if (
-              typeof payload === "object" &&
-              payload !== null &&
-              !Array.isArray(payload) &&
-              typeof next[target] === "object" &&
-              next[target] !== null &&
-              !Array.isArray(next[target])
-            ) {
-              next[target] = {
-                ...(next[target] as Record<string, unknown>),
-                ...(payload as Record<string, unknown>),
-              };
-            } else {
-              next[target] = payload;
+      if (val !== undefined && val !== null && val !== "") {
+        if (schemaField?.type === "number") {
+          const num = Number(val);
+          if (isNaN(num)) {
+            errors[f.name] = "Must be a valid number";
+          } else if (schemaField.validation) {
+            if (schemaField.validation.min !== undefined && num < schemaField.validation.min) {
+              errors[f.name] = `Must be at least ${schemaField.validation.min}`;
             }
-            break;
-          }
-
-          case "ADD_ITEM": {
-            const newItem = {
-              id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
-              ...(typeof payload === "object" && payload !== null
-                ? (payload as Record<string, unknown>)
-                : { label: payload }),
-              checked: false,
-              completed: false,
-            };
-            next[target] = Array.isArray(next[target])
-              ? [...(next[target] as unknown[]), newItem]
-              : [newItem];
-            break;
-          }
-
-          case "TOGGLE_ITEM": {
-            if (!Array.isArray(next[target])) break;
-            const id = (payload as { id?: string })?.id;
-            next[target] = (next[target] as Record<string, unknown>[]).map((item) =>
-              item.id === id
-                ? { ...item, checked: !item.checked, completed: !item.completed }
-                : item
-            );
-            break;
-          }
-
-          case "DELETE_ITEM": {
-            if (!Array.isArray(next[target])) break;
-            const id = (payload as { id?: string })?.id;
-            next[target] = (next[target] as Record<string, unknown>[]).filter(
-              (item) => item.id !== id
-            );
-            break;
-          }
-
-          case "CLEAR_ALL": {
-            if (Array.isArray(next[target])) {
-              next[target] = [];
+            if (schemaField.validation.max !== undefined && num > schemaField.validation.max) {
+              errors[f.name] = `Must be at most ${schemaField.validation.max}`;
             }
-            break;
+          }
+        } else if (schemaField?.type === "text" || schemaField?.type === "textarea") {
+          const str = String(val);
+          if (schemaField.validation) {
+            if (schemaField.validation.minLength !== undefined && str.length < schemaField.validation.minLength) {
+              errors[f.name] = `Must be at least ${schemaField.validation.minLength} chars`;
+            }
+            if (schemaField.validation.maxLength !== undefined && str.length > schemaField.validation.maxLength) {
+              errors[f.name] = `Must be at most ${schemaField.validation.maxLength} chars`;
+            }
           }
         }
+      }
+    }
+    return errors;
+  };
 
-        // ── Sync latest state to ref immediately (no stale closure risk) ──
-        stateRef.current = next;
+  // ── 3. Submit Handler (Create or Update) ──────────────────────────────────
+  const handleFormSubmit = async (e: React.FormEvent, formConfig: any) => {
+    e.preventDefault();
+    const entityName = formConfig.entity;
 
-        // ── Debounced, abort-safe save ─────────────────────────────────────
-        if (templateId) {
-          // Cancel pending debounce
-          if (saveTimeoutRef.current) {
-            clearTimeout(saveTimeoutRef.current);
-          }
+    const errors = validateForm(entityName, formValues, formConfig.fields);
+    if (Object.keys(errors).length > 0) {
+      setValidationErrors(errors);
+      return;
+    }
 
-          setSaving(true);
-
-          saveTimeoutRef.current = setTimeout(() => {
-            // Abort any in-flight PUT from the previous debounce window
-            if (abortControllerRef.current) {
-              abortControllerRef.current.abort();
-            }
-            abortControllerRef.current = new AbortController();
-
-            // Always use stateRef.current — guaranteed to be the latest state
-            fetch(`/api/ai-templates/${templateId}/state`, {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ appState: stateRef.current }),
-              signal: abortControllerRef.current.signal,
-            })
-              .then((res) => {
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                setSaving(false);
-              })
-              .catch((err: unknown) => {
-                if (err instanceof Error && err.name === "AbortError") return; // expected
-                console.error("[AppPreviewRenderer] Failed to save state:", err);
-                setSaving(false);
-              });
-          }, 800);
+    setSaving(true);
+    setError(null);
+    try {
+      if (editingRecord) {
+        // Update
+        const res = await fetch(`/api/ai-templates/${templateId}/records/${editingRecord.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ data: formValues }),
+        });
+        if (!res.ok) {
+          const d = await res.json();
+          throw new Error(d.error || "Failed to update record");
         }
+        const data = await res.json();
+        setRecords((prev) => ({
+          ...prev,
+          [entityName]: (prev[entityName] || []).map((r) => (r.id === editingRecord.id ? data.record : r)),
+        }));
+        setEditingRecord(null);
+      } else {
+        // Create
+        const res = await fetch(`/api/ai-templates/${templateId}/records`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ entityName, data: formValues }),
+        });
+        if (!res.ok) {
+          const d = await res.json();
+          throw new Error(d.error || "Failed to create record");
+        }
+        const data = await res.json();
+        setRecords((prev) => ({
+          ...prev,
+          [entityName]: [...(prev[entityName] || []), data.record],
+        }));
+      }
+      setFormValues({});
+      setValidationErrors({});
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Action failed");
+    } finally {
+      setSaving(false);
+    }
+  };
 
-        return next;
+  // ── 4. Edit mode trigger ──────────────────────────────────────────────────
+  const startEditRecord = (record: any, entityName: string) => {
+    setEditingRecord({ id: record.id, entityName, data: record });
+    const values: Record<string, any> = {};
+    const entitySchema = entities?.find((e) => e.name === entityName);
+    entitySchema?.fields.forEach((f) => {
+      values[f.name] = record[f.name] ?? "";
+    });
+    setFormValues(values);
+    setValidationErrors({});
+  };
+
+  const cancelEdit = () => {
+    setEditingRecord(null);
+    setFormValues({});
+    setValidationErrors({});
+  };
+
+  // ── 5. Delete handler ─────────────────────────────────────────────────────
+  const handleDeleteRecord = async (entityName: string, recordId: number) => {
+    if (!confirm("Are you sure you want to delete this record?")) return;
+    setSaving(true);
+    // Optimistic delete
+    const previousRecords = records[entityName] || [];
+    setRecords((prev) => ({
+      ...prev,
+      [entityName]: (prev[entityName] || []).filter((r) => r.id !== recordId),
+    }));
+    try {
+      const res = await fetch(`/api/ai-templates/${templateId}/records/${recordId}`, {
+        method: "DELETE",
       });
-    },
-    [templateId]
-  );
+      if (!res.ok) throw new Error("Failed to delete record");
+    } catch (err) {
+      // Revert on error
+      setRecords((prev) => ({ ...prev, [entityName]: previousRecords }));
+      setError(err instanceof Error ? err.message : "Failed to delete");
+    } finally {
+      setSaving(false);
+    }
+  };
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Render
-  // ─────────────────────────────────────────────────────────────────────────
+  // ── 6. Action triggering (e.g. toggle completion) ─────────────────────────
+  const triggerAction = async (actionId: string, record: any) => {
+    const action = actions?.find((a) => a.id === actionId);
+    if (!action) return;
 
-  if (loadingState) {
+    const entityName = action.entity;
+    const updateData: Record<string, any> = {};
+    if (action.type === "update" && action.fields) {
+      Object.entries(action.fields).forEach(([fKey, fVal]) => {
+        if (fVal === "toggle") {
+          updateData[fKey] = !record[fKey];
+        } else {
+          updateData[fKey] = fVal;
+        }
+      });
+      // Optimistic update
+      setRecords((prev) => ({
+        ...prev,
+        [entityName]: (prev[entityName] || []).map((r) => (r.id === record.id ? { ...r, ...updateData } : r)),
+      }));
+      try {
+        const res = await fetch(`/api/ai-templates/${templateId}/records/${record.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ data: updateData }),
+        });
+        if (!res.ok) throw new Error("Action failed");
+        const data = await res.json();
+        setRecords((prev) => ({
+          ...prev,
+          [entityName]: (prev[entityName] || []).map((r) => (r.id === record.id ? data.record : r)),
+        }));
+      } catch (err) {
+        fetchRecords();
+        setError("Action failed to persist.");
+      }
+    } else if (action.type === "delete") {
+      await handleDeleteRecord(entityName, record.id);
+    }
+  };
+
+  // ── 7. Render dynamic stats widget ────────────────────────────────────────
+  const renderStatsWidget = (widget: any, wIdx: number) => {
+    const entityName = widget.entity;
+    const entityRecords = records[entityName] || [];
+
+    return (
+      <div key={widget.id || `stats-${wIdx}`} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 my-4">
+        {widget.items?.map((item: any, idx: number) => {
+          // Apply widget filter if defined
+          let filtered = entityRecords;
+          if (item.filter) {
+            filtered = entityRecords.filter((rec) => {
+              return Object.entries(item.filter).every(([k, v]) => String(rec[k]) === String(v));
+            });
+          }
+
+          let calculatedValue: string | number = 0;
+          if (item.valueType === "count") {
+            calculatedValue = filtered.length;
+          } else if (item.field) {
+            const values = filtered.map((r) => Number(r[item.field])).filter((v) => !isNaN(v));
+            if (values.length > 0) {
+              if (item.valueType === "sum") {
+                calculatedValue = values.reduce((a, b) => a + b, 0);
+              } else if (item.valueType === "avg") {
+                calculatedValue = (values.reduce((a, b) => a + b, 0) / values.length).toFixed(1);
+              } else if (item.valueType === "max") {
+                calculatedValue = Math.max(...values);
+              } else if (item.valueType === "min") {
+                calculatedValue = Math.min(...values);
+              }
+            }
+          }
+
+          return (
+            <div
+              key={idx}
+              className="flex items-center gap-3 rounded-xl border border-border bg-white/70 p-4 shadow-sm backdrop-blur-sm transition hover:shadow-md"
+            >
+              <div
+                className="grid h-11 w-11 shrink-0 place-items-center rounded-xl"
+                style={{ backgroundColor: `${color}1a` }}
+              >
+                <Activity className="h-5 w-5" style={{ color }} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-lg font-bold leading-tight text-foreground">{calculatedValue}</p>
+                <p className="mt-0.5 truncate text-xs text-muted-foreground">{item.label}</p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  // ── 8. Render progress widget ─────────────────────────────────────────────
+  const renderProgressWidget = (widget: any, wIdx: number) => {
+    const entityName = widget.entity;
+    const entityRecords = records[entityName] || [];
+    let progress = 0;
+    if (entityRecords.length > 0) {
+      if (widget.calculate === "percentage" && widget.filterField) {
+        const completed = entityRecords.filter((r) => !!r[widget.filterField]).length;
+        progress = Math.round((completed / entityRecords.length) * 100);
+      } else if (widget.calculate === "sum_target" && widget.targetField && widget.targetValue) {
+        const sum = entityRecords
+          .map((r) => Number(r[widget.targetField!]))
+          .filter((v) => !isNaN(v))
+          .reduce((a, b) => a + b, 0);
+        progress = Math.round((sum / widget.targetValue) * 100);
+      }
+    }
+
+    const pct = Math.min(100, Math.max(0, progress));
+    return (
+      <div key={widget.id || `progress-${wIdx}`} className="rounded-xl border border-border bg-white/70 p-4 shadow-sm backdrop-blur-sm my-4">
+        <div className="mb-2 flex items-center justify-between">
+          <span className="text-sm font-medium text-foreground">{widget.title}</span>
+          <span className="text-xs font-bold tabular-nums text-muted-foreground">{pct}%</span>
+        </div>
+        <div className="h-3 w-full overflow-hidden rounded-full bg-muted">
+          <div
+            className="h-full rounded-full transition-all duration-700 ease-out"
+            style={{ width: `${pct}%`, backgroundColor: color }}
+          />
+        </div>
+      </div>
+    );
+  };
+
+  // ── 9. Render list/table widgets ──────────────────────────────────────────
+  const renderListOrTableWidget = (widget: any, wIdx: number) => {
+    const entityName = widget.entity;
+    const entityRecords = records[entityName] || [];
+    const query = (searchQueries[widget.id] || "").trim().toLowerCase();
+    const widgetFilters = selectedFilters[widget.id] || {};
+
+    // 1. Text Search filtering
+    let items = entityRecords;
+    if (query) {
+      items = items.filter((r) => {
+        return Object.values(r).some((v) => {
+          if (typeof v === "string" || typeof v === "number") {
+            return String(v).toLowerCase().includes(query);
+          }
+          return false;
+        });
+      });
+    }
+
+    // 2. Select Option filtering
+    Object.entries(widgetFilters).forEach(([field, selectedVal]) => {
+      if (selectedVal) {
+        items = items.filter((r) => String(r[field]) === selectedVal);
+      }
+    });
+
+    // Extract unique filter options for filter fields
+    const getFilterOptions = (field: string) => {
+      const vals = entityRecords.map((r) => r[field]).filter((v) => v !== undefined && v !== null && v !== "");
+      return Array.from(new Set(vals)).map(String);
+    };
+
+    return (
+      <div key={widget.id || `list-${wIdx}`} className="rounded-2xl border border-border bg-card/90 shadow-sm backdrop-blur-sm my-4 p-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <h3 className="text-base font-bold text-foreground">{widget.title}</h3>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Search Input */}
+            {widget.searchable && (
+              <div className="relative">
+                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                <input
+                  type="text"
+                  placeholder="Search records..."
+                  value={searchQueries[widget.id] || ""}
+                  onChange={(e) => setSearchQueries((prev) => ({ ...prev, [widget.id]: e.target.value }))}
+                  className="h-8 w-44 rounded-lg border border-border bg-white pl-8 pr-3 text-xs text-foreground outline-none transition focus:ring-1 focus:ring-orange-300"
+                />
+              </div>
+            )}
+
+            {/* Filter Selects */}
+            {widget.filterable &&
+              widget.filterFields?.map((fField: string) => (
+                <select
+                  key={fField}
+                  value={widgetFilters[fField] || ""}
+                  onChange={(e) =>
+                    setSelectedFilters((prev) => ({
+                      ...prev,
+                      [widget.id]: { ...(prev[widget.id] || {}), [fField]: e.target.value },
+                    }))
+                  }
+                  className="h-8 rounded-lg border border-border bg-white px-2 text-xs text-muted-foreground outline-none transition focus:ring-1 focus:ring-orange-300"
+                >
+                  <option value="">All {fField}</option>
+                  {getFilterOptions(fField).map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </select>
+              ))}
+          </div>
+        </div>
+
+        {items.length === 0 ? (
+          <p className="text-sm italic text-muted-foreground py-6 text-center">No records found.</p>
+        ) : widget.type === "table" ? (
+          <div className="overflow-x-auto rounded-xl border border-border">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/40">
+                  {widget.displayFields?.map((h: string) => (
+                    <th
+                      key={h}
+                      className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                    >
+                      {h}
+                    </th>
+                  ))}
+                  <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((item) => (
+                  <tr key={item.id} className="border-b border-border last:border-0 transition hover:bg-muted/20">
+                    {widget.displayFields?.map((field: string) => (
+                      <td key={field} className="px-4 py-2.5 text-sm text-foreground">
+                        {typeof item[field] === "boolean" ? (
+                          <span
+                            className={cn(
+                              "inline-flex h-2 w-2 rounded-full",
+                              item[field] ? "bg-emerald-500" : "bg-slate-300"
+                            )}
+                          />
+                        ) : (
+                          String(item[field] ?? "")
+                        )}
+                      </td>
+                    ))}
+                    <td className="px-4 py-2.5 text-right text-sm">
+                      <div className="flex items-center justify-end gap-2">
+                        {widget.actions?.map((actId: string) => {
+                          const act = actions?.find((a) => a.id === actId);
+                          if (!act) return null;
+                          if (act.type === "update") {
+                            return (
+                              <button
+                                key={actId}
+                                onClick={() => triggerAction(actId, item)}
+                                className="inline-flex items-center gap-1 rounded bg-muted hover:bg-muted/80 px-2 py-1 text-xs font-semibold text-muted-foreground transition"
+                              >
+                                {act.label}
+                              </button>
+                            );
+                          }
+                          return null;
+                        })}
+                        <button
+                          onClick={() => startEditRecord(item, entityName)}
+                          className="text-muted-foreground hover:text-foreground transition p-1"
+                        >
+                          <Edit className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteRecord(entityName, item.id)}
+                          className="text-muted-foreground hover:text-destructive transition p-1"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <ul className="space-y-2">
+            {items.map((item) => {
+              // Custom representation for checklist style vs general list item
+              const isChecklist = widget.actions?.some((aId: string) => {
+                const act = actions?.find((a) => a.id === aId);
+                return act?.type === "update" && Object.values(act.fields || {}).includes("toggle");
+              });
+
+              const toggleActionId = widget.actions?.find((aId: string) => {
+                const act = actions?.find((a) => a.id === aId);
+                return act?.type === "update" && Object.values(act.fields || {}).includes("toggle");
+              });
+
+              // Check if completed/checked
+              const isCompleted = Object.keys(item).some(
+                (k) => (k === "completed" || k === "checked") && !!item[k]
+              );
+
+              return (
+                <li
+                  key={item.id}
+                  className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-white/50 p-3 hover:bg-white transition"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    {isChecklist && toggleActionId ? (
+                      <button
+                        onClick={() => triggerAction(toggleActionId, item)}
+                        className={cn(
+                          "grid h-5 w-5 shrink-0 place-items-center rounded border-2 transition-all duration-200",
+                          isCompleted ? "border-transparent scale-105" : "border-border bg-white"
+                        )}
+                        style={isCompleted ? { backgroundColor: color, borderColor: color } : {}}
+                      >
+                        {isCompleted && <Check className="h-3 w-3 text-white" strokeWidth={3} />}
+                      </button>
+                    ) : (
+                      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/60" />
+                    )}
+
+                    <div className="min-w-0">
+                      <span
+                        className={cn(
+                          "text-sm font-medium transition",
+                          isCompleted ? "text-muted-foreground line-through" : "text-foreground"
+                        )}
+                      >
+                        {item.name || item.title || item.label || Object.values(item)[0] || "Untitled"}
+                      </span>
+                      {widget.displayFields?.slice(1).map((df: string) => {
+                        if (df === "completed" || df === "checked" || df === "id") return null;
+                        return (
+                          <span key={df} className="ml-2.5 text-[10px] text-muted-foreground border-l border-border pl-2">
+                            {df}: {String(item[df] ?? "")}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    {widget.actions?.map((actId: string) => {
+                      const act = actions?.find((a) => a.id === actId);
+                      if (!act || act.id === toggleActionId) return null;
+                      if (act.type === "update") {
+                        return (
+                          <button
+                            key={actId}
+                            onClick={() => triggerAction(actId, item)}
+                            className="inline-flex items-center gap-1 rounded bg-muted hover:bg-muted/80 px-2 py-0.5 text-[10px] font-semibold text-muted-foreground transition"
+                          >
+                            {act.label}
+                          </button>
+                        );
+                      }
+                      return null;
+                    })}
+                    <button
+                      onClick={() => startEditRecord(item, entityName)}
+                      className="text-muted-foreground hover:text-foreground transition p-1"
+                    >
+                      <Edit className="h-3 w-3" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteRecord(entityName, item.id)}
+                      className="text-muted-foreground hover:text-destructive transition p-1"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    );
+  };
+
+  // ── 10. Main Loading / Error rendering ────────────────────────────────────
+  if (loading) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4 p-8">
         <div
@@ -881,9 +649,10 @@ export function AppPreviewRenderer({ appJson, templateId }: AppPreviewRendererPr
         >
           <Loader2 className="h-7 w-7 animate-spin" style={{ color }} />
         </div>
+
         <div className="text-center">
           <p className="text-sm font-semibold text-foreground">Loading your app…</p>
-          <p className="mt-1 text-xs text-muted-foreground">Fetching saved state</p>
+          <p className="mt-1 text-xs text-muted-foreground">Fetching saved records</p>
         </div>
       </div>
     );
@@ -898,68 +667,175 @@ export function AppPreviewRenderer({ appJson, templateId }: AppPreviewRendererPr
           background: `linear-gradient(135deg, ${color}12 0%, ${color}06 100%)`,
         }}
       >
+        {onBack && (
+          <button
+            onClick={onBack}
+            className="flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border bg-white px-3 text-xs text-muted-foreground transition hover:bg-muted mr-2"
+          >
+            ← Back
+          </button>
+        )}
         <AppIcon name={icon} color={color} size="lg" />
+
         <div className="min-w-0 flex-1">
           <h2 className="text-xl font-bold tracking-tight text-foreground">{appName}</h2>
           <p className="mt-0.5 line-clamp-1 text-sm text-muted-foreground">{description}</p>
         </div>
 
-        {/* Saving indicator + action buttons */}
         <div className="flex shrink-0 items-center gap-2">
-          {templateId && <SavingIndicator saving={saving} />}
-
-          {Array.isArray(actions) &&
-            actions.slice(0, 2).map((action, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => {
-                  if (action.action && action.target) {
-                    handleAction(action.action, action.target);
-                  }
-                }}
-                className="h-8 rounded-lg px-3.5 text-xs font-semibold shadow-sm transition hover:opacity-90 active:scale-[0.97]"
-                style={
-                  i === 0
-                    ? { backgroundColor: color, color: "#fff" }
-                    : { backgroundColor: `${color}18`, color }
-                }
-              >
-                {action.label}
-              </button>
-            ))}
+          {saving && (
+            <div className="flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-600">
+              <Loader2 className="h-3 w-3 animate-spin" /> Saving…
+            </div>
+          )}
         </div>
       </div>
 
-      {/* ── State fetch error banner ────────────────────────────────────── */}
-      {fetchError && (
+      {error && (
         <div className="flex items-center gap-2 border-b border-amber-200 bg-amber-50 px-6 py-2.5 text-xs font-medium text-amber-700">
           <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-          {fetchError}
+          {error}
+          <button onClick={() => setError(null)} className="ml-auto text-amber-500 hover:text-amber-800">
+            Dismiss
+          </button>
         </div>
       )}
 
-      {/* ── Sections ────────────────────────────────────────────────────── */}
+      {/* ── Dashboard & CRUD Layout ────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto overscroll-contain px-6 py-5">
-        <div className="mx-auto max-w-3xl space-y-4 pb-12">
-          {Array.isArray(sections) && sections.length > 0 ? (
-            sections.map((section) => (
-              <Section
-                key={section.id}
-                section={section}
-                color={color}
-                appState={appState}
-                handleAction={handleAction}
-              />
-            ))
-          ) : (
-            <div className="flex flex-col items-center gap-3 py-16 text-center">
-              <Sparkles className="h-10 w-10 text-muted-foreground/40" />
-              <p className="text-sm text-muted-foreground">
-                No sections configured for this app.
-              </p>
+        <div className="mx-auto max-w-5xl space-y-4 pb-12">
+          {/* Widgets Grid at Top */}
+          {widgets?.some((w) => w.type === "stats") && (
+            <div>{widgets.filter((w) => w.type === "stats").map(renderStatsWidget)}</div>
+          )}
+
+          {widgets?.some((w) => w.type === "progress") && (
+            <div className="grid gap-4 sm:grid-cols-2">
+              {widgets.filter((w) => w.type === "progress").map(renderProgressWidget)}
             </div>
           )}
+
+          {/* Main workspace splits */}
+          <div className="grid gap-6 lg:grid-cols-[1fr_1.5fr]">
+            {/* Left: Dynamic Form CRUD */}
+            <div className="space-y-4">
+              {forms?.map((formConfig) => {
+                const isEdit = editingRecord && editingRecord.entityName === formConfig.entity;
+                return (
+                  <div
+                    key={formConfig.id}
+                    className="rounded-2xl border border-border bg-card p-5 shadow-soft transition"
+                  >
+                    <div className="mb-4 flex items-center justify-between">
+                      <h3 className="text-sm font-bold text-foreground">
+                        {isEdit ? `Edit ${entities?.find(e => e.name === formConfig.entity)?.label || "Item"}` : formConfig.title}
+                      </h3>
+
+                      {isEdit && (
+                        <button
+                          type="button"
+                          onClick={cancelEdit}
+                          className="text-xs text-muted-foreground hover:text-foreground transition underline"
+                        >
+                          Cancel Edit
+                        </button>
+                      )}
+                    </div>
+
+                    <form onSubmit={(e) => handleFormSubmit(e, formConfig)} className="space-y-3">
+                      {formConfig.fields?.map((field: any) => {
+                        const entitySchema = entities?.find((e) => e.name === formConfig.entity);
+                        const schemaField = entitySchema?.fields.find((sf) => sf.name === field.name);
+                        const label = field.label || schemaField?.label || field.name;
+                        const type = field.type || schemaField?.type || "text";
+                        const inputClass = cn(
+                          "h-9 w-full rounded-lg border border-border bg-white px-3 text-sm text-foreground outline-none transition focus:ring-1 focus:ring-orange-300",
+                          validationErrors[field.name] && "border-red-400 focus:ring-red-300"
+                        );
+
+                        return (
+                          <div key={field.name} className="flex flex-col gap-1">
+                            <label className="text-xs font-semibold text-foreground">
+                              {label}
+                              {field.required && <span className="ml-0.5 text-red-500">*</span>}
+                            </label>
+
+                            {type === "select" && schemaField?.options ? (
+                              <select
+                                value={formValues[field.name] ?? ""}
+                                onChange={(e) => setFormValues((prev) => ({ ...prev, [field.name]: e.target.value }))}
+                                className={inputClass}
+                                required={field.required}
+                              >
+                                <option value="">{field.placeholder || "Select Option…"}</option>
+                                {schemaField.options.map((opt) => (
+                                  <option key={opt} value={opt}>
+                                    {opt}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : type === "textarea" ? (
+                              <textarea
+                                value={formValues[field.name] ?? ""}
+                                onChange={(e) => setFormValues((prev) => ({ ...prev, [field.name]: e.target.value }))}
+                                placeholder={field.placeholder}
+                                className={cn(inputClass, "h-auto resize-none py-2")}
+                                rows={3}
+                                required={field.required}
+                              />
+                            ) : type === "boolean" ? (
+                              <label className="flex items-center gap-2 mt-1 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={!!formValues[field.name]}
+                                  onChange={(e) => setFormValues((prev) => ({ ...prev, [field.name]: e.target.checked }))}
+                                  className="rounded border-border text-orange-500 focus:ring-orange-300 h-4 w-4"
+                                />
+                                <span className="text-xs text-muted-foreground">{field.placeholder || "Active"}</span>
+                              </label>
+                            ) : (
+                              <input
+                                type={type === "number" ? "number" : type === "date" ? "date" : "text"}
+                                value={formValues[field.name] ?? ""}
+                                onChange={(e) => setFormValues((prev) => ({ ...prev, [field.name]: e.target.value }))}
+                                placeholder={field.placeholder}
+                                className={inputClass}
+                                required={field.required}
+                              />
+                            )}
+
+                            {validationErrors[field.name] && (
+                              <span className="text-[10px] text-red-500 font-semibold mt-0.5">
+                                {validationErrors[field.name]}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+
+                      <div className="flex justify-end pt-1">
+                        <button
+                          type="submit"
+                          className="inline-flex h-9 items-center gap-1.5 rounded-lg px-5 text-sm font-semibold text-white shadow-sm transition hover:opacity-90 active:scale-[0.98]"
+                          style={{ backgroundColor: color }}
+                        >
+                          <Plus className="h-4 w-4" />
+                          {isEdit ? "Save Changes" : "Add"}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Right: Lists and Tables */}
+            <div className="space-y-4">
+              {widgets
+                ?.filter((w) => w.type === "list" || w.type === "table")
+                .map(renderListOrTableWidget)}
+            </div>
+          </div>
         </div>
       </div>
     </div>

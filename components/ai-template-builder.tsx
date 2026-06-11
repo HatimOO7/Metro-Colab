@@ -96,7 +96,7 @@ function TemplateCard({
               className="h-1.5 w-1.5 rounded-full"
               style={{ backgroundColor: json.color }}
             />
-            {json.sections.length} sections
+            {json.widgets ? json.widgets.length : 0} widgets
           </span>
           <span className="text-[11px] text-muted-foreground">
             {formatDate(template.createdAt)}
@@ -108,12 +108,12 @@ function TemplateCard({
           <Button
             type="button"
             size="sm"
-            className="h-8 flex-1 rounded-lg text-xs"
+            className="h-8 flex-1 rounded-lg text-xs font-semibold"
             style={{ backgroundColor: json.color, color: "#fff" }}
             onClick={onPreview}
           >
             <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
-            Preview
+            Open
           </Button>
 
           <button
@@ -254,7 +254,7 @@ function EmptyState({ onSuggest }: { onSuggest: (prompt: string) => void }) {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-export function AiTemplateBuilderPage() {
+export function AiTemplateBuilderPage({ onOpenTemplate }: { onOpenTemplate?: (id: number) => void }) {
   const [prompt, setPrompt] = React.useState("");
   const [generating, setGenerating] = React.useState(false);
   const [genError, setGenError] = React.useState<string | null>(null);
@@ -531,7 +531,13 @@ export function AiTemplateBuilderPage() {
                   template={template}
                   isPinned={pinnedIds.has(template.id)}
                   pinCount={pinnedIds.size}
-                  onPreview={() => setPreviewTemplate(template)}
+                  onPreview={() => {
+                    if (onOpenTemplate) {
+                      onOpenTemplate(template.id);
+                    } else {
+                      setPreviewTemplate(template);
+                    }
+                  }}
                   onTogglePin={() => void handleTogglePin(template)}
                   onDelete={() => void handleDelete(template)}
                 />

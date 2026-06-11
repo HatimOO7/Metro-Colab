@@ -271,7 +271,7 @@ function AppShellContent({
 
   // Pinned AI apps for sidebar
   const [pinnedApps, setPinnedApps] = React.useState<PinnedApp[]>([]);
-  const [pinnedPreviewId, setPinnedPreviewId] = React.useState<number | null>(null);
+  const [activeAppTemplateId, setActiveAppTemplateId] = React.useState<number | null>(null);
 
   const loadPinnedApps = React.useCallback(async () => {
     try {
@@ -360,7 +360,10 @@ function AppShellContent({
                       <button
                         key={item.label}
                         type="button"
-                        onClick={() => setActiveItem(item.label)}
+                        onClick={() => {
+                          setActiveItem(item.label);
+                          setActiveAppTemplateId(null);
+                        }}
                         className={cn(
                           "flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[11px] font-semibold transition",
                           collapsed && "justify-center px-0",
@@ -393,11 +396,16 @@ function AppShellContent({
                     <button
                       key={app.id}
                       type="button"
-                      onClick={() => setPinnedPreviewId(app.id)}
+                      onClick={() => {
+                        setActiveAppTemplateId(app.id);
+                        setActiveItem(`app-${app.id}`);
+                      }}
                       className={cn(
                         "flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[11px] font-semibold transition",
                         collapsed && "justify-center px-0",
-                        "text-muted-foreground hover:bg-white/75 hover:text-foreground"
+                        activeItem === `app-${app.id}`
+                          ? "bg-sidebar-active text-foreground shadow-soft ring-1 ring-white/70"
+                          : "text-muted-foreground hover:bg-white/75 hover:text-foreground"
                       )}
                       title={app.appName}
                     >
@@ -435,8 +443,16 @@ function AppShellContent({
         </aside>
 
         <section className={cn("flex min-w-0 flex-1 flex-col overflow-y-auto", isWhiteboard && "overflow-hidden", isPagesSpaces && "overflow-hidden")}>
-          {activeItem !== "Notes" && !isWhiteboard && !isPagesSpaces && !isAiBuilder && <AppHeader activeItem={activeItem} onNewSpace={handleNewSpace} />}
-          {isCalendar ? (
+          {activeItem !== "Notes" && !isWhiteboard && !isPagesSpaces && !isAiBuilder && !activeAppTemplateId && <AppHeader activeItem={activeItem} onNewSpace={handleNewSpace} />}
+          {activeAppTemplateId ? (
+            <ActiveAppContainer
+              templateId={activeAppTemplateId}
+              onBack={() => {
+                setActiveAppTemplateId(null);
+                setActiveItem("Dashboard");
+              }}
+            />
+          ) : isCalendar ? (
             <CalendarPlanner />
           ) : isKanban ? (
             <KanbanBoardPage />
@@ -447,32 +463,29 @@ function AppShellContent({
           ) : isPagesSpaces ? (
             <PagesSpacesPage />
           ) : isAiBuilder ? (
-            <AiTemplateBuilderPage />
+            <AiTemplateBuilderPage
+              onOpenTemplate={(id) => {
+                setActiveAppTemplateId(id);
+                setActiveItem(`app-${id}`);
+              }}
+            />
           ) : (
             <DashboardContent />
           )}
         </section>
       </div>
-
-      {/* Pinned app preview modal */}
-      {pinnedPreviewId !== null && (
-        <PinnedAppPreviewModal
-          templateId={pinnedPreviewId}
-          onClose={() => setPinnedPreviewId(null)}
-        />
-      )}
     </main>
   );
 }
 
-// ── Pinned App Preview Modal ───────────────────────────────────────────────────
+// ── Active App Container ───────────────────────────────────────────────────────
 
-function PinnedAppPreviewModal({
+function ActiveAppContainer({
   templateId,
-  onClose,
+  onBack,
 }: {
   templateId: number;
-  onClose: () => void;
+  onBack: () => void;
 }) {
   const [template, setTemplate] = React.useState<{ appJson: import("@/db/schema").AiTemplateJson; appName: string; icon: string; color: string } | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -481,53 +494,36 @@ function PinnedAppPreviewModal({
     setLoading(true);
     fetch(`/api/ai-templates/${templateId}`)
       .then((r) => r.json())
-      .then((d: { template?: typeof template }) => { if (d.template) setTemplate(d.template); })
-      .catch(() => { })
+      .then((d: any) => {
+        if (d.template) setTemplate(d.template);
+      })
+      .catch((err) => console.error(err))
       .finally(() => setLoading(false));
   }, [templateId]);
 
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-orange-400" />
+      </div>
+    );
+  }
+
+  if (!template) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-3">
+        <p className="text-sm text-muted-foreground">App not found</p>
+        <Button onClick={onBack}>Go Back</Button>
+      </div>
+    );
+  }
+
   return (
-    <>
-      <div
-        className="fixed inset-0 z-30 bg-foreground/20 backdrop-blur-sm"
-        onClick={onClose}
-        aria-hidden="true"
-      />
-      <aside className="fixed bottom-0 right-0 top-0 z-40 flex w-full max-w-2xl flex-col border-l border-border bg-background shadow-2xl">
-        <div className="flex items-center gap-3 border-b border-border px-5 py-3">
-          {template && (
-            <>
-              <AppIcon name={template.appJson.icon} color={template.appJson.color} size="sm" />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold">{template.appJson.appName}</p>
-                <p className="text-[11px] text-muted-foreground">Pinned app</p>
-              </div>
-            </>
-          )}
-          {!template && !loading && <p className="flex-1 text-sm text-muted-foreground">App preview</p>}
-          <button
-            type="button"
-            onClick={onClose}
-            className="grid h-8 w-8 place-items-center rounded-lg border border-border bg-white text-muted-foreground transition hover:bg-muted"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="flex-1 overflow-hidden">
-          {loading ? (
-            <div className="flex h-full items-center justify-center">
-              <Loader2 className="h-8 w-8 animate-spin text-orange-400" />
-            </div>
-          ) : template ? (
-            <AppPreviewRenderer appJson={template.appJson} templateId={templateId} />
-          ) : (
-            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-              App not found
-            </div>
-          )}
-        </div>
-      </aside>
-    </>
+    <AppPreviewRenderer
+      appJson={template.appJson}
+      templateId={templateId}
+      onBack={onBack}
+    />
   );
 }
 
