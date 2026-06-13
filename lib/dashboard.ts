@@ -1,5 +1,4 @@
 import "server-only";
-
 import { clerkClient } from "@clerk/nextjs/server";
 import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import {
@@ -324,6 +323,11 @@ export async function getDashboardData(auth: AuthContext) {
     ...derivedActivity,
   ].slice(0, 12);
 
+  // Time filter variables for Upcoming Schedule
+  const currentDateStr = todayKey();
+  const now = new Date();
+  const currentHourMinute = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+
   const upcomingSchedule = [
     ...scheduledItems.map((item) => ({
       id: `calendar-${item.id}`,
@@ -344,7 +348,15 @@ export async function getDashboardData(auth: AuthContext) {
         type: "deadline",
       })),
   ]
-    .filter((item) => item.date && item.date >= todayKey())
+    .filter((item) => {
+      if (!item.date) return false;
+      if (item.date < currentDateStr) return false;
+      // If the event is today and has a time, filter out if that time has passed
+      if (item.date === currentDateStr && item.time) {
+        return item.time > currentHourMinute;
+      }
+      return true;
+    })
     .sort((a, b) => `${a.date ?? ""}${a.time ?? ""}`.localeCompare(`${b.date ?? ""}${b.time ?? ""}`))
     .slice(0, 8);
 
@@ -368,11 +380,15 @@ export async function getDashboardData(auth: AuthContext) {
     ...fallbackResources,
   ].slice(0, 8);
 
-  const collaborators = new Set<string>();
-  for (const board of boards) board.sharedEmails?.forEach((value) => collaborators.add(value));
-  for (const board of whiteboardRows) board.sharedEmails?.forEach((value) => collaborators.add(value));
-  for (const space of spaceRows) space.sharedEmails?.forEach((value) => collaborators.add(value));
-  collaborators.delete(email);
+  // Fetch collaboration data earlier to use its length for consistent stats
+  const collaborationData = await getCollaborationData(auth, {
+    boards,
+    whiteboardRows,
+    spaceRows,
+    pendingSpaces,
+    pendingKanban,
+    pendingWhiteboards,
+  });
 
   return {
     profile: {
@@ -394,7 +410,7 @@ export async function getDashboardData(auth: AuthContext) {
       templates: templates.length,
       spaces: spaceRows.length,
       pages: pageRows.length,
-      collaborators: collaborators.size,
+      collaborations: collaborationData.resources.length, // Renamed key to 'collaborations' and using accurate data length
       pendingInvitations: pendingSpaces.length + pendingKanban.length + pendingWhiteboards.length,
     },
     featureMetrics: [
@@ -403,7 +419,7 @@ export async function getDashboardData(auth: AuthContext) {
       { key: "notes", label: "Notes", value: userNotes.length, detail: `${userNotes.filter((note) => note.isPinned).length} pinned` },
       { key: "whiteboards", label: "Whiteboards", value: whiteboardRows.length, detail: `${whiteboardRows.filter((board) => board.userId !== userId).length} shared` },
       { key: "templates", label: "Templates", value: templates.length, detail: "Custom apps" },
-      { key: "collaboration", label: "Collaboration", value: collaborators.size, detail: `${pendingSpaces.length + pendingKanban.length + pendingWhiteboards.length} pending` },
+      { key: "collaboration", label: "Collaborations", value: collaborationData.resources.length, detail: `${pendingSpaces.length + pendingKanban.length + pendingWhiteboards.length} pending` },
     ],
     taskAnalytics: {
       total: allTasks.length,
@@ -415,14 +431,7 @@ export async function getDashboardData(auth: AuthContext) {
     recentActivity,
     upcomingSchedule,
     recentResources,
-    collaboration: await getCollaborationData(auth, {
-      boards,
-      whiteboardRows,
-      spaceRows,
-      pendingSpaces,
-      pendingKanban,
-      pendingWhiteboards,
-    }),
+    collaboration: collaborationData,
   };
 }
 

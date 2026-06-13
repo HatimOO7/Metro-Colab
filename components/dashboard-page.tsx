@@ -426,7 +426,7 @@ export function DashboardPage({
             <div className="grid grid-cols-3 gap-2 text-center sm:min-w-80">
               <Stat label="Tasks" value={data.stats.tasks} />
               <Stat label="Notes" value={data.stats.notes} />
-              <Stat label="Collaborators" value={data.stats.collaborators} />
+              <Stat label="Collaborations" value={data.stats.collaborations} />
             </div>
           </div>
         </div>
