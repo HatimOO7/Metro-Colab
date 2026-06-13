@@ -24,7 +24,7 @@ import {
   UserRound,
   UsersRound,
 } from "lucide-react";
-import { UserButton, useClerk } from "@clerk/nextjs";
+import { useClerk } from "@clerk/nextjs";
 import * as React from "react";
 
 import { Button } from "@/components/ui/button";
@@ -825,16 +825,13 @@ function Row({ title, meta, marker }: { title: string; meta: string; marker?: st
 
 function SettingsPanel({
   data,
-  saving,
-  saveProfile,
-  savePreferences,
 }: {
   data: DashboardData;
   saving: string | null;
   saveProfile: (formData: FormData) => Promise<void>;
   savePreferences: (patch: Partial<DashboardData["preferences"]>) => Promise<void>;
 }) {
-  const { signOut } = useClerk();
+  const { openUserProfile } = useClerk();
 
   return (
     <div className="rounded-lg border border-border bg-card p-4 shadow-soft">
@@ -843,42 +840,24 @@ function SettingsPanel({
         <Settings className="h-4 w-4 text-slate-600" aria-hidden="true" />
       </div>
 
-      <form action={(formData) => void saveProfile(formData)} className="mt-4 space-y-3">
+      <div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-border bg-white p-3">
         <div>
-          <Label className="text-xs">Name</Label>
-          <Input name="name" defaultValue={data.profile.name} className="mt-1 h-9 text-xs" />
+          <p className="text-xs font-semibold text-muted-foreground">Update Your Profile</p>
         </div>
-        <div>
-          <Label className="text-xs">Email</Label>
-          <Input name="email" defaultValue={data.profile.email} className="mt-1 h-9 text-xs" />
-        </div>
-        <Button type="submit" className="h-9 w-full rounded-lg text-xs" disabled={saving === "profile"}>
-          {saving === "profile" && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          Update profile
-        </Button>
-      </form>
-
-      <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-border bg-white p-3">
-        <div>
-          <p className="text-xs font-semibold text-muted-foreground">Profile picture</p>
-          <p className="mt-1 text-xs text-muted-foreground">Managed by Clerk</p>
-        </div>
-        <UserButton userProfileMode="modal" />
-      </div>
-
-      <div className="mt-4 space-y-3 border-t border-border pt-4">
-        <PreferenceSelect label="Default calendar view" value={data.preferences.defaultCalendarView} values={["month", "week"]} onChange={(defaultCalendarView) => void savePreferences({ defaultCalendarView: defaultCalendarView as "month" | "week" })} />
-        <PreferenceSelect label="Default task priority" value={data.preferences.defaultTaskPriority} values={["Low", "Medium", "High"]} onChange={(defaultTaskPriority) => void savePreferences({ defaultTaskPriority: defaultTaskPriority as "Low" | "Medium" | "High" })} />
-        <ToggleRow icon={Bell} label="Notifications" checked={data.preferences.notifications} onChange={(notifications) => void savePreferences({ notifications })} />
-        <ToggleRow icon={Palette} label="Auto-save" checked={data.preferences.autoSave} onChange={(autoSave) => void savePreferences({ autoSave })} />
-        <ToggleRow icon={Shield} label="Profile visible to collaborators" checked={data.preferences.privacy.showProfileToCollaborators} onChange={(showProfileToCollaborators) => void savePreferences({ privacy: { ...data.preferences.privacy, showProfileToCollaborators } })} />
-      </div>
-
-      <div className="mt-4 grid gap-2 border-t border-border pt-4 sm:grid-cols-2">
-        <Button type="button" variant="outline" className="h-9 bg-white text-xs" onClick={() => void signOut()}>
-          <LogOut className="mr-2 h-4 w-4" aria-hidden="true" />
-          Logout
-        </Button>
+        <button
+          type="button"
+          onClick={() => openUserProfile()}
+          className="rounded-full ring-offset-2 transition hover:ring-2 hover:ring-primary"
+          aria-label="Manage account"
+        >
+          {data.profile.imageUrl ? (
+            <img src={data.profile.imageUrl} alt="" className="h-9 w-9 rounded-full object-cover" />
+          ) : (
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold">
+              {data.profile.name?.charAt(0) ?? "?"}
+            </span>
+          )}
+        </button>
       </div>
     </div>
   );
