@@ -1,22 +1,13 @@
 import { NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
-
+import { and, eq, sql } from "drizzle-orm";
 import { db, kanbanColumns, kanbanBoards } from "@/db";
 import { getBoardWithDetails, getDatabaseUser, getUserBoard } from "@/lib/kanban";
 
 export async function PATCH(request: Request) {
   const user = await getDatabaseUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await request.json().catch(() => null);
-
-  if (!body || typeof body !== "object") {
-    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
-  }
-
   const record = body as Record<string, unknown>;
   const boardId = Number(record.boardId);
   const columnIds = Array.isArray(record.columnIds) ? record.columnIds.map(Number) : [];
@@ -26,27 +17,21 @@ export async function PATCH(request: Request) {
   }
 
   const board = await getUserBoard(boardId, user.id);
+  if (!board) return NextResponse.json({ error: "Board not found" }, { status: 404 });
 
-  if (!board) {
-    return NextResponse.json({ error: "Board not found" }, { status: 404 });
+  if (columnIds.length > 0) {
+    const now = new Date();
+    const valueRows = columnIds.map((id, position) => sql`(${id}, ${position})`);
+
+    await db.execute(sql`
+      UPDATE kanban_columns AS c
+      SET
+        position = v.position::integer,
+        updated_at = ${now}
+      FROM (VALUES ${sql.join(valueRows, sql`, `)}) AS v(id, position)
+      WHERE c.id = v.id::integer AND c.board_id = ${boardId}
+    `);
   }
 
-  const existingColumns = await db
-    .select({ id: kanbanColumns.id })
-    .from(kanbanColumns)
-    .innerJoin(kanbanBoards, eq(kanbanColumns.boardId, kanbanBoards.id))
-    .where(and(eq(kanbanColumns.boardId, boardId), eq(kanbanBoards.userId, user.id)));
-  const existingIds = new Set(existingColumns.map((column) => column.id));
-
-  if (columnIds.length !== existingIds.size || columnIds.some((id) => !existingIds.has(id))) {
-    return NextResponse.json({ error: "Column order must include every column on the board" }, { status: 400 });
-  }
-
-  await Promise.all(
-    columnIds.map((columnId, position) =>
-      db.update(kanbanColumns).set({ position, updatedAt: new Date() }).where(eq(kanbanColumns.id, columnId))
-    )
-  );
-
-  return NextResponse.json({ board: await getBoardWithDetails(boardId, user.id) });
+  return NextResponse.json({ success: true });
 }
