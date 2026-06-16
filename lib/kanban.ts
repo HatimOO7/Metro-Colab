@@ -1,4 +1,4 @@
-import { and, asc, eq, or, sql } from "drizzle-orm";
+import { and, asc, eq, or, sql, desc, inArray } from "drizzle-orm";
 
 import { calendarItems, db, kanbanBoards, kanbanColumns, kanbanTasks, users, type KanbanLabel, type KanbanTask } from "@/db";
 import { normalizeCalendarDateKey } from "@/lib/calendar-items";
@@ -200,34 +200,66 @@ export async function getBoardWithDetails(boardId: number, userId: number) {
 }
 
 export async function getBoardsWithDetails(userId: number, email?: string) {
-  const whereClause = email 
+  const whereClause = email
     ? or(
         eq(kanbanBoards.userId, userId),
         sql`${kanbanBoards.sharedEmails} @> ${JSON.stringify([email])}::jsonb`
       )
     : eq(kanbanBoards.userId, userId);
 
-  const rows = await db
+  const boardsRows = await db
     .select({
       board: kanbanBoards,
       ownerEmail: users.email,
-      column: kanbanColumns,
-      task: kanbanTasks,
     })
     .from(kanbanBoards)
     .innerJoin(users, eq(kanbanBoards.userId, users.id))
-    .leftJoin(kanbanColumns, eq(kanbanColumns.boardId, kanbanBoards.id))
-    .leftJoin(kanbanTasks, eq(kanbanTasks.boardId, kanbanBoards.id))
     .where(whereClause)
-    .orderBy(
-      asc(kanbanBoards.createdAt),
-      asc(kanbanColumns.position),
-      asc(kanbanColumns.createdAt),
-      asc(kanbanTasks.position),
-      asc(kanbanTasks.createdAt)
-    );
+    .orderBy(asc(kanbanBoards.createdAt));
 
-  return hydrateFromJoinRows(rows);
+  if (boardsRows.length === 0) return [];
+
+  const boardIds = boardsRows.map((row) => row.board.id);
+
+  const [columnsRows, tasksRows] = await Promise.all([
+    db
+      .select()
+      .from(kanbanColumns)
+      .where(inArray(kanbanColumns.boardId, boardIds))
+      .orderBy(asc(kanbanColumns.position), asc(kanbanColumns.createdAt)),
+    db
+      .select()
+      .from(kanbanTasks)
+      .where(inArray(kanbanTasks.boardId, boardIds))
+      .orderBy(asc(kanbanTasks.position), asc(kanbanTasks.createdAt)),
+  ]);
+
+  const boardsMap = new Map();
+
+  for (const { board, ownerEmail } of boardsRows) {
+    boardsMap.set(board.id, {
+      ...board,
+      ownerEmail,
+      columns: [],
+    });
+  }
+
+  const columnsMap = new Map();
+
+  for (const col of columnsRows) {
+    const columnWithTasks = { ...col, tasks: [] };
+    columnsMap.set(col.id, columnWithTasks);
+    
+    const board = boardsMap.get(col.boardId);
+    if (board) board.columns.push(columnWithTasks);
+  }
+
+  for (const task of tasksRows) {
+    const col = columnsMap.get(task.columnId);
+    if (col) col.tasks.push(task);
+  }
+
+  return Array.from(boardsMap.values());
 }
 
 export type KanbanCalendarSyncResult = {

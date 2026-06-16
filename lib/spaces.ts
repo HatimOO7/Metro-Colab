@@ -15,28 +15,22 @@ function normalizeEmail(email: string) {
 export async function getSpacesForUser(userId: number, email: string) {
   const normalizedEmail = normalizeEmail(email);
 
-  const memberRows = await db
-    .select({ spaceId: spaceMembers.spaceId })
-    .from(spaceMembers)
-    .where(eq(spaceMembers.userId, userId));
-  const memberSpaceIds = memberRows.map((row) => row.spaceId);
-
-  const accessFilters = [
-    eq(spaces.userId, userId),
-    sql`${spaces.sharedEmails} @> ${JSON.stringify([normalizedEmail])}::jsonb`,
-  ];
-  if (memberSpaceIds.length > 0) {
-    accessFilters.push(inArray(spaces.id, memberSpaceIds));
-  }
-
   const rows = await db
     .select({ space: spaces, ownerEmail: users.email })
     .from(spaces)
     .innerJoin(users, eq(spaces.userId, users.id))
-    .where(or(...accessFilters))
+    .leftJoin(spaceMembers, eq(spaceMembers.spaceId, spaces.id))
+    .where(
+      or(
+        eq(spaces.userId, userId),
+        sql`${spaces.sharedEmails} @> ${JSON.stringify([normalizedEmail])}::jsonb`,
+        eq(spaceMembers.userId, userId)
+      )
+    )
     .orderBy(desc(spaces.updatedAt));
 
   const seen = new Set<number>();
+  
   return rows
     .filter(({ space }) => {
       if (seen.has(space.id)) return false;

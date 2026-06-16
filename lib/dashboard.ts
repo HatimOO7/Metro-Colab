@@ -236,15 +236,15 @@ export async function getDashboardData(auth: AuthContext) {
       : [];
 
   const allTasks = boards.flatMap((board) =>
-    board.columns.flatMap((column) =>
-      column.tasks.map((task) => ({
-        ...task,
-        boardName: board.name,
-        columnName: column.name,
-        completed: /done|complete|closed/i.test(column.name),
-      }))
-    )
-  );
+  board.columns.flatMap((column: typeof kanbanColumns.$inferSelect & { tasks: any[] }) =>
+    column.tasks.map((task: typeof kanbanTasks.$inferSelect) => ({
+      ...task,
+      boardName: board.name,
+      columnName: column.name,
+      completed: /done|complete|closed/i.test(column.name),
+    }))
+  )
+);
 
   const overdueTasks = allTasks.filter((task) => task.dueDate && task.dueDate < todayKey() && !task.completed);
   const completedTasks = allTasks.filter((task) => task.completed);
