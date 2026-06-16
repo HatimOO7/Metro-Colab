@@ -637,35 +637,41 @@ export async function deleteAccount(auth: AuthContext, passwordConfirmation: str
   const userId = auth.dbUser.id;
   const email = normalizeEmail(auth.email);
 
-  const sharedBoards = await db.select().from(kanbanBoards).where(sql`${kanbanBoards.sharedEmails} @> ${JSON.stringify([email])}::jsonb`);
-  for (const board of sharedBoards) {
-    await db
-      .update(kanbanBoards)
-      .set({
-        sharedEmails: (board.sharedEmails ?? []).filter((value) => normalizeEmail(value) !== email),
-        pendingEmails: (board.pendingEmails ?? []).filter((value) => normalizeEmail(value) !== email),
-        updatedAt: new Date(),
-      })
-      .where(eq(kanbanBoards.id, board.id));
-  }
+  const [sharedBoards, sharedWhiteboards] = await Promise.all([
+    db.select().from(kanbanBoards).where(sql`${kanbanBoards.sharedEmails} @> ${JSON.stringify([email])}::jsonb`),
+    db.select().from(whiteboards).where(sql`${whiteboards.sharedEmails} @> ${JSON.stringify([email])}::jsonb`)
+  ]);
 
-  const sharedWhiteboards = await db.select().from(whiteboards).where(sql`${whiteboards.sharedEmails} @> ${JSON.stringify([email])}::jsonb`);
-  for (const board of sharedWhiteboards) {
-    await db
-      .update(whiteboards)
-      .set({
-        sharedEmails: (board.sharedEmails ?? []).filter((value) => normalizeEmail(value) !== email),
-        pendingEmails: (board.pendingEmails ?? []).filter((value) => normalizeEmail(value) !== email),
-        updatedAt: new Date(),
-      })
-      .where(eq(whiteboards.id, board.id));
-  }
+  const updatePromises = [
+    ...sharedBoards.map((board) =>
+      db.update(kanbanBoards)
+        .set({
+          sharedEmails: (board.sharedEmails ?? []).filter((value) => normalizeEmail(value) !== email),
+          pendingEmails: (board.pendingEmails ?? []).filter((value) => normalizeEmail(value) !== email),
+          updatedAt: new Date(),
+        })
+        .where(eq(kanbanBoards.id, board.id))
+    ),
+    ...sharedWhiteboards.map((board) =>
+      db.update(whiteboards)
+        .set({
+          sharedEmails: (board.sharedEmails ?? []).filter((value) => normalizeEmail(value) !== email),
+          pendingEmails: (board.pendingEmails ?? []).filter((value) => normalizeEmail(value) !== email),
+          updatedAt: new Date(),
+        })
+        .where(eq(whiteboards.id, board.id))
+    )
+  ];
 
-  await db.delete(spaceMembers).where(eq(spaceMembers.userId, userId));
-  await db
-    .update(spaceInvitations)
-    .set({ status: "revoked", updatedAt: new Date() })
-    .where(or(eq(spaceInvitations.invitedEmail, email), eq(spaceInvitations.invitedBy, userId)));
+  await Promise.all(updatePromises);
+
+  await Promise.all([
+    db.delete(spaceMembers).where(eq(spaceMembers.userId, userId)),
+    db.update(spaceInvitations)
+      .set({ status: "revoked", updatedAt: new Date() })
+      .where(or(eq(spaceInvitations.invitedEmail, email), eq(spaceInvitations.invitedBy, userId)))
+  ]);
+
   await db.delete(users).where(eq(users.id, userId));
 
   const client = await getClerkClient();
