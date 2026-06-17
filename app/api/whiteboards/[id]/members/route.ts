@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { db, users, whiteboards } from "@/db";
@@ -39,19 +39,28 @@ export async function GET(_request: Request, context: RouteContext) {
 
   const sharedEmails = board.sharedEmails ?? [];
   const pendingEmails = board.pendingEmails ?? [];
-  const allCollaborators = await Promise.all(
-    sharedEmails.map(async (email) => {
-      const [record] = await db
-        .select({
-          email: users.email,
-          name: users.name,
-          firstName: users.firstName,
-          lastName: users.lastName,
-          imageUrl: users.imageUrl,
-        })
-        .from(users)
-        .where(eq(users.email, email));
 
+  let allCollaborators: {
+    email: string;
+    name: string;
+    imageUrl: string | null;
+    role: "collaborator";
+  }[] = [];
+
+  if (sharedEmails.length > 0) {
+    const usersData = await db
+      .select({
+        email: users.email,
+        name: users.name,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        imageUrl: users.imageUrl,
+      })
+      .from(users)
+      .where(inArray(users.email, sharedEmails));
+
+    allCollaborators = sharedEmails.map((email) => {
+      const record = usersData.find((u) => u.email === email);
       return {
         email,
         name:
@@ -61,8 +70,8 @@ export async function GET(_request: Request, context: RouteContext) {
         imageUrl: record?.imageUrl ?? null,
         role: "collaborator" as const,
       };
-    })
-  );
+    });
+  }
 
   return NextResponse.json({
     isOwner: board.userId === user.id,

@@ -249,7 +249,11 @@ export const whiteboards = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
-  (table) => [index("whiteboards_user_idx").on(table.userId)]
+  (table) => [
+    index("whiteboards_user_idx").on(table.userId),
+    index("whiteboards_shared_emails_idx").using("gin", table.sharedEmails),
+    index("whiteboards_pending_emails_idx").using("gin", table.pendingEmails)
+  ]
 );
 
 export type Whiteboard = typeof whiteboards.$inferSelect;

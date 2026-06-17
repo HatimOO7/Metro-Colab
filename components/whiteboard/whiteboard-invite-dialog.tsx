@@ -11,9 +11,11 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+
 type SearchUser = {
   id: number;
   email: string;
@@ -66,6 +68,7 @@ export function WhiteboardInviteDialog({
         const response = await fetch(`/api/users/search?q=${encodeURIComponent(query.trim())}`, {
           signal: controller.signal,
         });
+
         const payload = await response.json();
 
         if (!response.ok) {
@@ -98,6 +101,7 @@ export function WhiteboardInviteDialog({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
       });
+
       const payload = await response.json();
 
       if (!response.ok) {
@@ -119,11 +123,10 @@ export function WhiteboardInviteDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Invite collaborator</DialogTitle>
+          <DialogDescription className="text-xs text-muted-foreground mt-1.5">
+            Search registered users by name or email to invite them to &quot;{boardName}&quot;.
+          </DialogDescription>
         </DialogHeader>
-
-        <p className="text-xs text-muted-foreground">
-          Search registered users by name or email to invite them to &quot;{boardName}&quot;.
-        </p>
 
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />

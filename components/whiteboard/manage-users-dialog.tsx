@@ -11,6 +11,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -79,6 +80,7 @@ export function ManageUsersDialog({ open, onOpenChange, boardId }: ManageUsersDi
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
       });
+
       const payload = await response.json();
 
       if (!response.ok) {
@@ -104,6 +106,9 @@ export function ManageUsersDialog({ open, onOpenChange, boardId }: ManageUsersDi
             <Users className="h-4 w-4" />
             Manage users
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            Manage whiteboard members, view owners, and pending invites.
+          </DialogDescription>
         </DialogHeader>
 
         {error && <p className="text-xs text-destructive">{error}</p>}

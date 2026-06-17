@@ -37,6 +37,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -371,7 +372,6 @@ export function WhiteboardPage() {
 
   async function handleSaveBoard() {
     const name = boardForm.name.trim() || "Untitled whiteboard";
-
     try {
       if (editingBoard) {
         const payload = await readPayload(
@@ -381,7 +381,6 @@ export function WhiteboardPage() {
             body: JSON.stringify({ name, color: boardForm.color }),
           })
         );
-
         const updated = payload.board as WhiteboardRecord;
         setBoards((current) => current.map((board) => (board.id === updated.id ? updated : board)));
       } else {
@@ -392,7 +391,6 @@ export function WhiteboardPage() {
             body: JSON.stringify({ name, color: boardForm.color }),
           })
         );
-
         const created = payload.board as WhiteboardRecord;
         setBoards((current) => [created, ...current]);
         setSelectedBoardId(created.id);
@@ -412,7 +410,6 @@ export function WhiteboardPage() {
           method: "DELETE",
         })
       );
-
       setBoards((current) => {
         const next = current.filter((item) => item.id !== board.id);
         setSelectedBoardId((selected) => (selected === board.id ? next[0]?.id ?? null : selected));
@@ -643,6 +640,9 @@ export function WhiteboardPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{editingBoard ? "Rename whiteboard" : "New whiteboard"}</DialogTitle>
+            <DialogDescription className="sr-only">
+              {editingBoard ? "Rename your existing whiteboard." : "Create a new whiteboard here."}
+            </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3">

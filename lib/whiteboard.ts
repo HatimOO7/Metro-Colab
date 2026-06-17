@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql, or } from "drizzle-orm";
 
 import { db, users, whiteboards } from "@/db";
 import { normalizeText } from "@/lib/whiteboard-shared";
@@ -34,31 +34,18 @@ export async function getWhiteboardWithAccess(whiteboardId: number, userId: numb
 }
 
 export async function getWhiteboardsForUser(userId: number, email: string) {
-  const owned = await db
+  const boards = await db
     .select()
     .from(whiteboards)
-    .where(eq(whiteboards.userId, userId))
+    .where(
+      or(
+        eq(whiteboards.userId, userId),
+        sql`${whiteboards.sharedEmails} @> ${JSON.stringify([email])}::jsonb`
+      )
+    )
     .orderBy(desc(whiteboards.updatedAt));
 
-  const shared = await db
-    .select()
-    .from(whiteboards)
-    .where(sql`${whiteboards.sharedEmails} @> ${JSON.stringify([email])}::jsonb`)
-    .orderBy(desc(whiteboards.updatedAt));
-
-  const seen = new Set<number>();
-  const boards = [];
-
-  for (const board of [...owned, ...shared]) {
-    if (seen.has(board.id)) {
-      continue;
-    }
-
-    seen.add(board.id);
-    boards.push(board);
-  }
-
-  return boards.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+  return boards;
 }
 
 export async function getWhiteboardOwnerEmail(userId: number) {
