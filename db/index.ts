@@ -1,5 +1,5 @@
-import { neon } from '@neondatabase/serverless';
-import { drizzle } from 'drizzle-orm/neon-http';
+import { Pool } from '@neondatabase/serverless';
+import { drizzle } from 'drizzle-orm/neon-serverless';
 import * as schema from '@/db/schema';
 
 const databaseUrl = process.env.DATABASE_URL || 'postgresql://user:password@localhost:5432/placeholder';
@@ -9,8 +9,7 @@ const globalForDrizzle = globalThis as unknown as {
 
 export const db =
   globalForDrizzle.db ||
-  drizzle({
-    client: neon(databaseUrl),
+  drizzle(new Pool({ connectionString: databaseUrl }), {
     schema,
   });
 

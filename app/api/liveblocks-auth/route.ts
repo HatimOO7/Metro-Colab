@@ -1,5 +1,5 @@
 import { Liveblocks } from "@liveblocks/node";
-import { currentUser } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { kanbanBoards, users } from "@/db/schema";
@@ -16,42 +16,35 @@ const liveblocks = new Liveblocks({
 
 export async function POST(request: Request) {
   try {
-    const user = await currentUser();
-
-    if (!user) {
+    const { userId } = await auth();
+    
+    if (!userId) {
       return new NextResponse("Unauthorized", { status: 401 });
     }
 
     const dbUser = await db.query.users.findFirst({
-      where: eq(users.clerkId, user.id),
+      where: eq(users.clerkId, userId),
     });
 
-    if (!dbUser) {
-      return new NextResponse("User not found in database", { status: 404 });
+    if (!dbUser || !dbUser.email) {
+      return new NextResponse("User not found or no email in database", { status: 404 });
     }
 
     const body = await request.json();
     const { room } = body;
 
-    const rawEmail = user.emailAddresses[0]?.emailAddress;
-
-    if (!rawEmail) {
-      return new NextResponse("User has no email address", { status: 400 });
-    }
-
-    const email = rawEmail.toLowerCase();
+    const email = dbUser.email.toLowerCase();
 
     const userInfo = {
-      name: user.firstName ? `${user.firstName} ${user.lastName ?? ""}`.trim() : email,
+      name: dbUser.name || (dbUser.firstName ? `${dbUser.firstName} ${dbUser.lastName ?? ""}`.trim() : email),
       email,
-      avatar: user.imageUrl,
+      avatar: dbUser.imageUrl ?? undefined,
     };
 
     const session = liveblocks.prepareSession(email, { userInfo });
 
     if (room && room.startsWith("kanban-board-")) {
       const boardId = parseInt(room.replace("kanban-board-", ""), 10);
-
       if (!isNaN(boardId)) {
         const board = await db.query.kanbanBoards.findFirst({
           where: eq(kanbanBoards.id, boardId),
@@ -72,18 +65,17 @@ export async function POST(request: Request) {
       }
     } else if (room && room.startsWith("whiteboard-")) {
       const boardId = parseInt(room.replace("whiteboard-", ""), 10);
-
       if (!isNaN(boardId)) {
         const board = await getWhiteboardWithAccess(boardId, dbUser.id, email);
-
         if (board) {
-          const ownerEmail = await getWhiteboardOwnerEmail(board.userId);
-          if (ownerEmail) {
-            // FIX: Remvoved blocking 'await'. This now runs safely in the background.
-            ensureWhiteboardRoom(boardId, ownerEmail, board.name).catch((err) =>
-              console.error("Background ensureWhiteboardRoom failed:", err)
-            );
-          }
+          getWhiteboardOwnerEmail(board.userId).then((ownerEmail) => {
+            if (ownerEmail) {
+              ensureWhiteboardRoom(boardId, ownerEmail, board.name).catch((err) =>
+                console.error("Background ensureWhiteboardRoom failed:", err)
+              );
+            }
+          }).catch((err) => console.error(err));
+          
           session.allow(room, session.FULL_ACCESS);
         } else {
           return new NextResponse("Forbidden", { status: 403 });
@@ -91,9 +83,7 @@ export async function POST(request: Request) {
       }
     } else if (room && room.startsWith("user-inbox-")) {
       const inboxEmail = parseUserInboxEmail(room);
-
-      if (inboxEmail && inboxEmail === email.toLowerCase()) {
-        // FIX: Removed blocking 'await'. Background execution ensures quick auth token release.
+      if (inboxEmail && inboxEmail === email) {
         ensureUserInboxRoom(email).catch((err) =>
           console.error("Background ensureUserInboxRoom failed:", err)
         );
@@ -103,7 +93,6 @@ export async function POST(request: Request) {
       }
     } else if (room && room.startsWith("space-")) {
       const spaceId = parseInt(room.replace("space-", ""), 10);
-
       if (!isNaN(spaceId)) {
         const space = await getSpaceWithAccess(spaceId, dbUser.id, email);
         if (space) {
@@ -116,7 +105,6 @@ export async function POST(request: Request) {
       }
     } else if (room && room.startsWith("page-")) {
       const pageId = parseInt(room.replace("page-", ""), 10);
-
       if (!isNaN(pageId)) {
         const row = await getPageWithSpaceAccess(pageId, dbUser.id, email);
         if (row) {
