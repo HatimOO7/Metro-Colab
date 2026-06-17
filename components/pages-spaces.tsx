@@ -1801,30 +1801,17 @@ export function PagesSpacesPage() {
 
   // Load spaces with page counts
   async function loadSpaces() {
-    setLoadingSpaces(true);
-    try {
-      const res = await fetch("/api/spaces");
-      if (res.ok) {
-        const data = (await res.json()) as SpaceRecord[];
-        // Fetch page counts in parallel
-        const withCounts = await Promise.all(
-          data.map(async (space) => {
-            try {
-              const pRes = await fetch(`/api/pages?spaceId=${space.id}`);
-              const pages = pRes.ok ? (await pRes.json() as PageRecord[]) : [];
-              return { ...space, pageCount: pages.filter((p) => !p.isArchived).length };
-            } catch {
-              return { ...space, pageCount: 0 };
-            }
-          })
-        );
-        setSpaces(withCounts);
-      }
-    } finally {
-      setLoadingSpaces(false);
+  setLoadingSpaces(true);
+  try {
+    const res = await fetch("/api/spaces");
+    if (res.ok) {
+      const data = (await res.json()) as SpaceRecord[];
+      setSpaces(data); 
     }
+  } finally {
+    setLoadingSpaces(false);
   }
-
+}
   React.useEffect(() => { void loadSpaces(); }, []);
 
   React.useEffect(() => {

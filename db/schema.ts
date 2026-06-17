@@ -130,7 +130,9 @@ export const calendarItems = pgTable("calendar_items", {
   status: text("status").notNull().default("scheduled"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("calendar_items_user_idx").on(table.userId) // এই লাইনটি যোগ করো
+]);
 
 export type CalendarItem = typeof calendarItems.$inferSelect;
 export type NewCalendarItem = typeof calendarItems.$inferInsert;

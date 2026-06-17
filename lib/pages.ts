@@ -1,5 +1,5 @@
-import { and, desc, eq } from "drizzle-orm";
-import { db, pages, spaces, users } from "@/db";
+import { and, desc, eq, sql } from "drizzle-orm";
+import { db, pages, spaceMembers, spaces, users } from "@/db";
 import { copyPageTaskLinks } from "@/lib/page-tasks";
 import { getSpaceRole, hasSpaceAccess } from "@/lib/space-permissions";
 
@@ -24,18 +24,44 @@ async function mapPageWithEditor(page: typeof pages.$inferSelect): Promise<PageW
 
 export async function getPagesForSpace(spaceId: number): Promise<PageWithUser[]> {
   const rows = await db
-    .select({ page: pages })
+    .select({
+      page: pages,
+      editorName: users.name,
+      editorEmail: users.email,
+    })
     .from(pages)
+    .leftJoin(users, eq(users.id, pages.lastEditedByUserId))
     .where(eq(pages.spaceId, spaceId))
     .orderBy(desc(pages.updatedAt));
 
-  return Promise.all(rows.map(({ page }) => mapPageWithEditor(page)));
+  return rows.map(({ page, editorName, editorEmail }) => ({
+    ...page,
+    updatedByName: editorName ?? editorEmail ?? undefined,
+    updatedByEmail: editorEmail ?? undefined,
+  }));
 }
 
 export async function getPageById(pageId: number): Promise<PageWithUser | null> {
-  const [page] = await db.select().from(pages).where(eq(pages.id, pageId));
-  if (!page) return null;
-  return mapPageWithEditor(page);
+  const [row] = await db
+    .select({
+      page: pages,
+      editorName: users.name,
+      editorEmail: users.email,
+    })
+    .from(pages)
+    .leftJoin(
+      users, 
+      eq(users.id, sql`COALESCE(${pages.lastEditedByUserId}, ${pages.userId})`)
+    )
+    .where(eq(pages.id, pageId));
+
+  if (!row) return null;
+
+  return {
+    ...row.page,
+    updatedByName: row.editorName ?? row.editorEmail ?? undefined,
+    updatedByEmail: row.editorEmail ?? undefined,
+  };
 }
 
 export async function getPageWithSpaceAccess(
@@ -44,22 +70,44 @@ export async function getPageWithSpaceAccess(
   _email: string
 ) {
   const [row] = await db
-    .select({ page: pages, space: spaces })
+    .select({
+      page: pages,
+      space: spaces,
+      editorName: users.name,
+      editorEmail: users.email,
+      memberRole: spaceMembers.role, 
+    })
     .from(pages)
     .innerJoin(spaces, eq(pages.spaceId, spaces.id))
+    .leftJoin(
+      users, 
+      eq(users.id, sql`COALESCE(${pages.lastEditedByUserId}, ${pages.userId})`)
+    )
+    .leftJoin(
+      spaceMembers, 
+      and(eq(spaceMembers.spaceId, spaces.id), eq(spaceMembers.userId, userId))
+    )
     .where(eq(pages.id, pageId));
 
   if (!row) return null;
+  let role: "owner" | "collaborator" | null = null;
+  
+  if (row.space.userId === userId) {
+    role = "owner";
+  } else if (row.memberRole) {
+    role = row.memberRole as "owner" | "collaborator";
+  }
 
-  const access = await hasSpaceAccess(row.space.id, userId);
-  if (!access) return null;
+  if (!role) return null;
 
-  const role = await getSpaceRole(row.space.id, userId);
-  const pageWithUser = await mapPageWithEditor(row.page);
+  const pageWithUser: PageWithUser = {
+    ...row.page,
+    updatedByName: row.editorName ?? row.editorEmail ?? undefined,
+    updatedByEmail: row.editorEmail ?? undefined,
+  };
 
   return { page: pageWithUser, space: row.space, role };
 }
-
 export async function createPage(
   spaceId: number,
   userId: number,

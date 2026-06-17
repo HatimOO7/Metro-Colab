@@ -66,7 +66,11 @@ export async function createPageComment(pageId: number, userId: number, content:
     .returning();
 
   if (!comment) return null;
-  await syncCommentsCount(pageId);
+  await db
+    .update(pages)
+    .set({ commentsCount: sql`comments_count + 1`, updatedAt: new Date() })
+    .where(eq(pages.id, pageId));
+
   return comment;
 }
 
@@ -96,6 +100,9 @@ export async function deletePageComment(commentId: number, userId: number) {
   if (!comment) return false;
 
   await db.delete(pageComments).where(eq(pageComments.id, commentId));
-  await syncCommentsCount(comment.pageId);
+  await db
+    .update(pages)
+    .set({ commentsCount: sql`comments_count - 1`, updatedAt: new Date() })
+    .where(eq(pages.id, comment.pageId));
   return true;
 }

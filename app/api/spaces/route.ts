@@ -3,6 +3,7 @@ import { currentUser } from "@clerk/nextjs/server";
 import { db, users } from "@/db";
 import { eq } from "drizzle-orm";
 import { createSpace, getSpacesForUser } from "@/lib/spaces";
+import { getSpacePageCount } from "@/lib/spaces";
 
 async function getDbUser() {
   const user = await currentUser();
@@ -14,13 +15,21 @@ async function getDbUser() {
   return { user, dbUser, email };
 }
 
+
 export async function GET() {
   try {
     const auth = await getDbUser();
     if (!auth) return new NextResponse("Unauthorized", { status: 401 });
 
     const allSpaces = await getSpacesForUser(auth.dbUser.id, auth.email);
-    return NextResponse.json(allSpaces);
+    const spacesWithCounts = await Promise.all(
+      allSpaces.map(async (space) => {
+        const count = await getSpacePageCount(space.id);
+        return { ...space, pageCount: count };
+      })
+    );
+
+    return NextResponse.json(spacesWithCounts);
   } catch (error) {
     console.error("GET /api/spaces error:", error);
     return new NextResponse("Internal Server Error", { status: 500 });
