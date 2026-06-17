@@ -13,19 +13,34 @@ import {
 import dynamic from "next/dynamic";
 import * as React from "react";
 
-import { diagramToExcalidrawElements, type DiagramPayload } from "@/lib/excalidraw-diagram";
+import {
+  diagramToExcalidrawElements,
+  type DiagramPayload,
+} from "@/lib/excalidraw-diagram";
 import { WhiteboardCursors } from "@/components/whiteboard/whiteboard-cursors";
 
 import "@excalidraw/excalidraw/index.css";
 
-const Excalidraw = dynamic(async () => (await import("@excalidraw/excalidraw")).Excalidraw, {
-  ssr: false,
-  loading: () => (
-    <div className="grid h-full place-items-center text-sm text-muted-foreground">Loading canvas…</div>
-  ),
-});
+const Excalidraw = dynamic(
+  async () => (await import("@excalidraw/excalidraw")).Excalidraw,
+  {
+    ssr: false,
+    loading: () => (
+      <div className="grid h-full place-items-center text-sm text-muted-foreground">
+        Loading canvas…
+      </div>
+    ),
+  },
+);
 
-const CURSOR_COLORS = ["#0ea5e9", "#10b981", "#f97316", "#e11d48", "#7c3aed", "#14b8a6"];
+const CURSOR_COLORS = [
+  "#0ea5e9",
+  "#10b981",
+  "#f97316",
+  "#e11d48",
+  "#7c3aed",
+  "#14b8a6",
+];
 
 export type WhiteboardCanvasHandle = {
   exportPng: () => Promise<void>;
@@ -55,139 +70,111 @@ function CanvasInner({
 }: WhiteboardCanvasProps): React.ReactElement {
   const excalidrawRef = React.useRef<ExcalidrawImperativeAPI | null>(null);
   const containerRef = React.useRef<HTMLDivElement>(null);
-  const isRemoteUpdate = React.useRef(false);
   const saveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSyncedJson = React.useRef<string>("[]");
+  const [ready, setReady] = React.useState(false);
+  const [initialElements, setInitialElements] = React.useState<
+    readonly ExcalidrawElement[]
+  >([]);
+
   const liveblocksSelf = useSelf();
   const others = useOthers();
   const updatePresence = useUpdateMyPresence();
 
   const storedElementsJson = useStorage((root) => {
-    const canvas = root.canvas as { elementsJson?: string; version?: number } | undefined;
+    const canvas = root.canvas as { elementsJson?: string } | undefined;
     return canvas?.elementsJson ?? "[]";
   });
-  const storageVersion = useStorage((root) => {
-    const canvas = root.canvas as { version?: number } | undefined;
-    return canvas?.version ?? 0;
-  });
 
+  const latestStoredJson = React.useRef(storedElementsJson);
+  latestStoredJson.current = storedElementsJson;
 
-  const sanitizeElements = (elements: any[]): ExcalidrawElement[] => {
-    if (!elements || !Array.isArray(elements)) return [];
+  const updateCanvas = useMutation(
+    ({ storage }, elements: readonly ExcalidrawElement[]) => {
+      const canvas = storage.get("canvas") as LiveObject<{
+        elementsJson: string;
+        version: number;
+      }> | null;
+      if (!canvas) return;
+      canvas.set("elementsJson", JSON.stringify(elements));
+      canvas.set("version", (canvas.get("version") ?? 0) + 1);
+    },
+    [],
+  );
 
-    // Create a map of all valid IDs currently in the payload
-    const validIds = new Set(elements.map((el) => el.id));
+  React.useEffect(() => {
+    let live = true;
 
-    return elements.map((el) => {
-      // 1. Completely remove fractionalIndex to force Excalidraw to recalculate z-index
-      const { fractionalIndex, ...safeElement } = el;
-
-      // 2. Fix boundElements (children attached to this shape)
-      let validBoundElements = safeElement.boundElements;
-      if (Array.isArray(safeElement.boundElements)) {
-        const filtered = safeElement.boundElements.filter(
-          (b: any) => b && typeof b.id === "string" && validIds.has(b.id)
-        );
-        validBoundElements = filtered.length ? filtered : null;
+    import("@excalidraw/excalidraw").then(({ restoreElements }) => {
+      if (!live) return;
+      try {
+        const raw = JSON.parse(latestStoredJson.current);
+        const safe = restoreElements(raw ?? [], null);
+        setInitialElements(safe);
+        lastSyncedJson.current = JSON.stringify(safe);
+      } catch {
+        setInitialElements([]);
+        lastSyncedJson.current = "[]";
       }
-
-      // 3. Fix containerId (if this text is bound to a parent shape that doesn't exist)
-      let validContainerId = safeElement.containerId;
-      if (validContainerId && !validIds.has(validContainerId)) {
-        validContainerId = null;
-      }
-
-      return {
-        ...safeElement,
-        boundElements: validBoundElements,
-        containerId: validContainerId
-      } as ExcalidrawElement;
+      setReady(true);
     });
-  };
 
-  const storedElements = React.useMemo(() => {
-    try {
-      return JSON.parse(storedElementsJson) as ExcalidrawElement[];
-    } catch {
-      return [] as ExcalidrawElement[];
-    }
-  }, [storedElementsJson]);
-
-  const updateCanvas = useMutation(({ storage }, elements: readonly ExcalidrawElement[]) => {
-    const canvas = storage.get("canvas") as LiveObject<{
-      elementsJson: string;
-      version: number;
-    }> | null;
-
-    if (!canvas) {
-      return;
-    }
-
-    canvas.set("elementsJson", JSON.stringify(elements));
-    canvas.set("version", (canvas.get("version") ?? 0) + 1);
+    return () => {
+      live = false;
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    };
   }, []);
 
   React.useEffect(() => {
-    if (!excalidrawRef.current || isRemoteUpdate.current) {
-      return;
-    }
+    if (!ready || !excalidrawRef.current) return;
+    if (storedElementsJson === lastSyncedJson.current) return;
 
-    isRemoteUpdate.current = true;
-    try {
-      // Sanitize elements to avoid Excalidraw invariant errors
-      const safeElements = sanitizeElements(storedElements ?? []);
-      excalidrawRef.current.updateScene({
-        elements: safeElements as unknown as ExcalidrawElement[],
-      });
-    } catch (error) {
-      console.error("Excalidraw updateScene prevented a crash:", error);
-    } finally {
-      isRemoteUpdate.current = false;
-    }
-  }, [storageVersion, storedElements]);
+    import("@excalidraw/excalidraw").then(({ restoreElements }) => {
+      if (!excalidrawRef.current) return;
+      try {
+        const safe = restoreElements(JSON.parse(storedElementsJson), null);
+        lastSyncedJson.current = storedElementsJson;
+        excalidrawRef.current.updateScene({ elements: safe });
+      } catch {}
+    });
+  }, [storedElementsJson, ready]);
+
   React.useEffect(() => {
-    const connectionId = liveblocksSelf?.connectionId ?? 0;
+    const id = liveblocksSelf?.connectionId ?? 0;
     updatePresence({
       name: userName,
-      color: CURSOR_COLORS[connectionId % CURSOR_COLORS.length],
+      color: CURSOR_COLORS[id % CURSOR_COLORS.length],
     });
   }, [liveblocksSelf?.connectionId, updatePresence, userName]);
 
   const handleChange = React.useCallback(
     (elements: readonly ExcalidrawElement[]) => {
-      if (isRemoteUpdate.current) {
-        return;
-      }
+      if (!ready) return;
+      const json = JSON.stringify(elements);
+      if (json === lastSyncedJson.current) return;
 
       onSaveStatusChange("saving");
-
-      if (saveTimer.current) {
-        clearTimeout(saveTimer.current);
-      }
+      if (saveTimer.current) clearTimeout(saveTimer.current);
 
       saveTimer.current = setTimeout(() => {
+        lastSyncedJson.current = json;
         updateCanvas(elements);
         onSaveStatusChange("saved");
         saveTimer.current = setTimeout(() => onSaveStatusChange("idle"), 1500);
-      }, 400);
+      }, 500);
     },
-    [onSaveStatusChange, updateCanvas]
+    [ready, onSaveStatusChange, updateCanvas],
   );
 
   const handlePointerMove = React.useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
+    (e: React.PointerEvent<HTMLDivElement>) => {
       const rect = containerRef.current?.getBoundingClientRect();
-      if (!rect) {
-        return;
-      }
-
+      if (!rect) return;
       updatePresence({
-        cursor: {
-          x: event.clientX - rect.left,
-          y: event.clientY - rect.top,
-        },
+        cursor: { x: e.clientX - rect.left, y: e.clientY - rect.top },
       });
     },
-    [updatePresence]
+    [updatePresence],
   );
 
   const handlePointerLeave = React.useCallback(() => {
@@ -197,45 +184,36 @@ function CanvasInner({
   React.useImperativeHandle(canvasRef, () => ({
     async exportPng() {
       const api = excalidrawRef.current;
-      if (!api) {
-        return;
-      }
-
+      if (!api) return;
       const { exportToBlob } = await import("@excalidraw/excalidraw");
       const blob = await exportToBlob({
         elements: api.getSceneElements(),
-        appState: {
-          ...api.getAppState(),
-          exportBackground: true,
-        },
+        appState: { ...api.getAppState(), exportBackground: true },
         files: api.getFiles(),
         mimeType: "image/png",
       });
-
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `${boardName.replace(/\s+/g, "-").toLowerCase() || "whiteboard"}.png`;
+      anchor.download = `${
+        boardName.replace(/\s+/g, "-").toLowerCase() || "whiteboard"
+      }.png`;
       anchor.click();
       URL.revokeObjectURL(url);
     },
+
     injectDiagram(diagram: DiagramPayload) {
       const api = excalidrawRef.current;
-      if (!api) {
-        return;
-      }
-
+      if (!api) return;
       const newElements = diagramToExcalidrawElements(diagram);
       const existing = api.getSceneElements();
       api.updateScene({ elements: [...existing, ...newElements] });
       handleChange(api.getSceneElements());
     },
+
     addStickyNote(color: string) {
       const api = excalidrawRef.current;
-      if (!api) {
-        return;
-      }
-
+      if (!api) return;
       const shapeId = randomId("sticky");
       const textId = randomId("sticky-text");
       const appState = api.getAppState();
@@ -312,20 +290,23 @@ function CanvasInner({
       api.updateScene({ elements: [...existing, shape, text] });
       handleChange(api.getSceneElements());
     },
+
     setStrokeColor(color: string) {
       const api = excalidrawRef.current;
-      if (!api) {
-        return;
-      }
-
+      if (!api) return;
       api.updateScene({
-        appState: {
-          ...api.getAppState(),
-          currentItemStrokeColor: color,
-        },
+        appState: { ...api.getAppState(), currentItemStrokeColor: color },
       });
     },
   }));
+
+  if (!ready) {
+    return (
+      <div className="grid h-full place-items-center text-sm text-muted-foreground">
+        Loading canvas…
+      </div>
+    );
+  }
 
   return (
     <div
@@ -340,7 +321,7 @@ function CanvasInner({
         }}
         onChange={handleChange}
         initialData={{
-          elements: sanitizeElements(storedElements ?? []) as unknown as ExcalidrawElement[],
+          elements: initialElements as unknown as ExcalidrawElement[],
           appState: {
             viewBackgroundColor: "#fafafa",
             currentItemStrokeColor: strokeColor,

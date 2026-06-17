@@ -42,7 +42,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useWorkspaceData } from "@/components/workspace-data";
 import { boardColors } from "@/lib/whiteboard-shared";
 import { cn } from "@/lib/utils";
@@ -151,10 +156,19 @@ function WhiteboardRoom({
     <>
       <header className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border bg-background/90 px-3 py-2 backdrop-blur sm:px-4">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: board.color }} />
-          <h2 className="truncate text-sm font-semibold sm:text-base">{board.name}</h2>
+          <span
+            className="h-3 w-3 shrink-0 rounded-full"
+            style={{ backgroundColor: board.color }}
+          />
+          <h2 className="truncate text-sm font-semibold sm:text-base">
+            {board.name}
+          </h2>
           <span className="text-[10px] text-muted-foreground">
-            {saveStatus === "saving" ? "Saving…" : saveStatus === "saved" ? "Saved" : ""}
+            {saveStatus === "saving"
+              ? "Saving…"
+              : saveStatus === "saved"
+                ? "Saved"
+                : ""}
           </span>
         </div>
 
@@ -189,11 +203,16 @@ function WhiteboardRoom({
                     className="h-8 rounded-lg bg-white text-xs"
                     onClick={onInviteOpen}
                   >
-                    <UserPlus className="mr-1.5 h-3.5 w-3.5 text-sky-600" aria-hidden="true" />
+                    <UserPlus
+                      className="mr-1.5 h-3.5 w-3.5 text-sky-600"
+                      aria-hidden="true"
+                    />
                     Invite
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Invite a registered collaborator</TooltipContent>
+                <TooltipContent>
+                  Invite a registered collaborator
+                </TooltipContent>
               </Tooltip>
             )}
 
@@ -206,7 +225,10 @@ function WhiteboardRoom({
                   className="h-8 rounded-lg bg-white text-xs"
                   onClick={onManageUsersOpen}
                 >
-                  <Users className="mr-1.5 h-3.5 w-3.5 text-indigo-600" aria-hidden="true" />
+                  <Users
+                    className="mr-1.5 h-3.5 w-3.5 text-indigo-600"
+                    aria-hidden="true"
+                  />
                   Manage
                 </Button>
               </TooltipTrigger>
@@ -224,14 +246,22 @@ function WhiteboardRoom({
                   disabled={ringing}
                 >
                   {ringing ? (
-                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                    <Loader2
+                      className="mr-1.5 h-3.5 w-3.5 animate-spin"
+                      aria-hidden="true"
+                    />
                   ) : (
-                    <Radio className="mr-1.5 h-3.5 w-3.5 text-red-500" aria-hidden="true" />
+                    <Radio
+                      className="mr-1.5 h-3.5 w-3.5 text-red-500"
+                      aria-hidden="true"
+                    />
                   )}
                   Go Live
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Ring collaborators, then start the call</TooltipContent>
+              <TooltipContent>
+                Ring collaborators, then start the call
+              </TooltipContent>
             </Tooltip>
 
             <Tooltip>
@@ -243,7 +273,10 @@ function WhiteboardRoom({
                   className="h-8 rounded-lg bg-white text-xs"
                   onClick={() => onAiOpenChange(true)}
                 >
-                  <Sparkles className="mr-1.5 h-3.5 w-3.5 text-fuchsia-600" aria-hidden="true" />
+                  <Sparkles
+                    className="mr-1.5 h-3.5 w-3.5 text-fuchsia-600"
+                    aria-hidden="true"
+                  />
                   AI Diagram
                 </Button>
               </TooltipTrigger>
@@ -279,7 +312,12 @@ function WhiteboardRoom({
         />
       </div>
 
-      {liveOpen && <VideoCallPanel roomName={`whiteboard-${board.id}`} onClose={() => onLiveOpenChange(false)} />}
+      {liveOpen && (
+        <VideoCallPanel
+          roomName={`whiteboard-${board.id}`}
+          onClose={() => onLiveOpenChange(false)}
+        />
+      )}
 
       <AiDiagramDialog
         open={aiOpen}
@@ -292,15 +330,24 @@ function WhiteboardRoom({
 
 export function WhiteboardPage() {
   const { user } = useUser();
-  const { pendingWhiteboardSelection, clearWhiteboardSelection } = useWorkspaceData();
+  const { pendingWhiteboardSelection, clearWhiteboardSelection } =
+    useWorkspaceData();
   const [boards, setBoards] = React.useState<WhiteboardRecord[]>([]);
-  const [selectedBoardId, setSelectedBoardId] = React.useState<number | null>(null);
+  const [selectedBoardId, setSelectedBoardId] = React.useState<number | null>(
+    null,
+  );
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [boardDialogOpen, setBoardDialogOpen] = React.useState(false);
-  const [editingBoard, setEditingBoard] = React.useState<WhiteboardRecord | null>(null);
-  const [boardForm, setBoardForm] = React.useState<BoardForm>({ name: "", color: boardColors[0] });
-  const [saveStatus, setSaveStatus] = React.useState<"saved" | "saving" | "idle">("idle");
+  const [editingBoard, setEditingBoard] =
+    React.useState<WhiteboardRecord | null>(null);
+  const [boardForm, setBoardForm] = React.useState<BoardForm>({
+    name: "",
+    color: boardColors[0],
+  });
+  const [saveStatus, setSaveStatus] = React.useState<
+    "saved" | "saving" | "idle"
+  >("idle");
   const [liveOpen, setLiveOpen] = React.useState(false);
   const [ringing, setRinging] = React.useState(false);
   const [inviteOpen, setInviteOpen] = React.useState(false);
@@ -314,7 +361,8 @@ export function WhiteboardPage() {
     user?.emailAddresses[0]?.emailAddress ||
     "Collaborator";
 
-  const selectedBoard = boards.find((board) => board.id === selectedBoardId) ?? null;
+  const selectedBoard =
+    boards.find((board) => board.id === selectedBoardId) ?? null;
   const isOwner = selectedBoard?.role === "owner";
 
   async function handleGoLive() {
@@ -325,9 +373,12 @@ export function WhiteboardPage() {
     setRinging(true);
 
     try {
-      const response = await fetch(`/api/whiteboards/${selectedBoard.id}/call/ring`, {
-        method: "POST",
-      });
+      const response = await fetch(
+        `/api/whiteboards/${selectedBoard.id}/call/ring`,
+        {
+          method: "POST",
+        },
+      );
       const payload = await response.json();
 
       if (!response.ok) {
@@ -337,7 +388,11 @@ export function WhiteboardPage() {
       setLiveOpen(true);
       toast.success("Calling collaborators…");
     } catch (ringError) {
-      toast.error(ringError instanceof Error ? ringError.message : "Unable to ring collaborators");
+      toast.error(
+        ringError instanceof Error
+          ? ringError.message
+          : "Unable to ring collaborators",
+      );
     } finally {
       setRinging(false);
     }
@@ -353,7 +408,11 @@ export function WhiteboardPage() {
       setBoards(nextBoards);
       setSelectedBoardId((current) => current ?? nextBoards[0]?.id ?? null);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Unable to load whiteboards");
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Unable to load whiteboards",
+      );
     } finally {
       setLoading(false);
     }
@@ -379,17 +438,19 @@ export function WhiteboardPage() {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ name, color: boardForm.color }),
-          })
+          }),
         );
         const updated = payload.board as WhiteboardRecord;
-        setBoards((current) => current.map((board) => (board.id === updated.id ? updated : board)));
+        setBoards((current) =>
+          current.map((board) => (board.id === updated.id ? updated : board)),
+        );
       } else {
         const payload = await readPayload(
           await fetch("/api/whiteboards", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ name, color: boardForm.color }),
-          })
+          }),
         );
         const created = payload.board as WhiteboardRecord;
         setBoards((current) => [created, ...current]);
@@ -399,7 +460,9 @@ export function WhiteboardPage() {
       setBoardDialogOpen(false);
       setEditingBoard(null);
     } catch (saveError) {
-      toast.error(saveError instanceof Error ? saveError.message : "Unable to save board");
+      toast.error(
+        saveError instanceof Error ? saveError.message : "Unable to save board",
+      );
     }
   }
 
@@ -408,15 +471,21 @@ export function WhiteboardPage() {
       await readPayload(
         await fetch(`/api/whiteboards/${board.id}`, {
           method: "DELETE",
-        })
+        }),
       );
       setBoards((current) => {
         const next = current.filter((item) => item.id !== board.id);
-        setSelectedBoardId((selected) => (selected === board.id ? next[0]?.id ?? null : selected));
+        setSelectedBoardId((selected) =>
+          selected === board.id ? (next[0]?.id ?? null) : selected,
+        );
         return next;
       });
     } catch (deleteError) {
-      toast.error(deleteError instanceof Error ? deleteError.message : "Unable to delete board");
+      toast.error(
+        deleteError instanceof Error
+          ? deleteError.message
+          : "Unable to delete board",
+      );
     }
   }
 
@@ -455,9 +524,16 @@ export function WhiteboardPage() {
             <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-3">
               <div className="min-w-0">
                 <p className="text-sm font-semibold">Whiteboards</p>
-                <p className="text-[10px] text-muted-foreground">{boards.length} boards</p>
+                <p className="text-[10px] text-muted-foreground">
+                  {boards.length} boards
+                </p>
               </div>
-              <Button type="button" size="icon" className="h-8 w-8 rounded-lg" onClick={openCreateDialog}>
+              <Button
+                type="button"
+                size="icon"
+                className="h-8 w-8 rounded-lg"
+                onClick={openCreateDialog}
+              >
                 <Plus className="h-4 w-4" aria-hidden="true" />
               </Button>
             </div>
@@ -485,7 +561,7 @@ export function WhiteboardPage() {
                         "group flex items-center gap-2 rounded-lg border px-2 py-2 transition",
                         selectedBoardId === board.id
                           ? "border-fuchsia-200 bg-fuchsia-50 shadow-soft"
-                          : "border-transparent hover:bg-white/80"
+                          : "border-transparent hover:bg-white/80",
                       )}
                     >
                       <button
@@ -498,7 +574,9 @@ export function WhiteboardPage() {
                           style={{ backgroundColor: board.color }}
                         />
                         <span className="min-w-0">
-                          <span className="block truncate text-sm font-semibold">{board.name}</span>
+                          <span className="block truncate text-sm font-semibold">
+                            {board.name}
+                          </span>
                           <span className="block truncate text-[10px] text-muted-foreground">
                             {formatBoardDate(board.updatedAt)}
                           </span>
@@ -540,7 +618,9 @@ export function WhiteboardPage() {
                     type="button"
                     className={cn(
                       "h-6 w-6 rounded-full border-2",
-                      strokeColor === color ? "border-foreground" : "border-transparent"
+                      strokeColor === color
+                        ? "border-foreground"
+                        : "border-transparent",
                     )}
                     style={{ backgroundColor: color }}
                     onClick={() => {
@@ -558,7 +638,11 @@ export function WhiteboardPage() {
             {error && (
               <div className="border-b border-destructive/25 bg-red-50 px-4 py-2 text-sm text-destructive">
                 {error}
-                <button type="button" className="ml-2 font-semibold underline" onClick={() => void loadBoards()}>
+                <button
+                  type="button"
+                  className="ml-2 font-semibold underline"
+                  onClick={() => void loadBoards()}
+                >
                   Retry
                 </button>
               </div>
@@ -566,16 +650,30 @@ export function WhiteboardPage() {
 
             {loading ? (
               <div className="grid flex-1 place-items-center text-sm text-muted-foreground">
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+                <Loader2
+                  className="mr-2 h-4 w-4 animate-spin"
+                  aria-hidden="true"
+                />
                 Loading whiteboards…
               </div>
             ) : !selectedBoard ? (
               <div className="grid flex-1 place-items-center p-6 text-center">
                 <div>
-                  <PenLine className="mx-auto h-10 w-10 text-fuchsia-600" aria-hidden="true" />
-                  <p className="mt-3 text-sm font-semibold">No whiteboard selected</p>
-                  <p className="mt-1 text-xs text-muted-foreground">Create a board to open the canvas.</p>
-                  <Button type="button" className="mt-4 h-9 rounded-lg text-xs" onClick={openCreateDialog}>
+                  <PenLine
+                    className="mx-auto h-10 w-10 text-fuchsia-600"
+                    aria-hidden="true"
+                  />
+                  <p className="mt-3 text-sm font-semibold">
+                    No whiteboard selected
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Create a board to open the canvas.
+                  </p>
+                  <Button
+                    type="button"
+                    className="mt-4 h-9 rounded-lg text-xs"
+                    onClick={openCreateDialog}
+                  >
                     <Plus className="mr-2 h-4 w-4" />
                     New whiteboard
                   </Button>
@@ -583,10 +681,11 @@ export function WhiteboardPage() {
               </div>
             ) : (
               <RoomProvider
-                id={`whiteboard-${selectedBoard.id}`}
-                initialPresence={{ cursor: null, name: userName, color: boardColors[0] }}
-                initialStorage={whiteboardInitialStorage}
-              >
+  key={selectedBoard.id}
+  id={`whiteboard-${selectedBoard.id}`}
+  initialPresence={{ cursor: null, name: userName, color: boardColors[0] }}
+  initialStorage={whiteboardInitialStorage}
+>
                 <ClientSideSuspense
                   fallback={
                     <div className="grid flex-1 place-items-center text-sm text-muted-foreground">
@@ -609,7 +708,9 @@ export function WhiteboardPage() {
                     aiOpen={aiOpen}
                     onAiOpenChange={setAiOpen}
                     onExport={() => void canvasRef.current?.exportPng()}
-                    onAddSticky={(color) => canvasRef.current?.addStickyNote(color)}
+                    onAddSticky={(color) =>
+                      canvasRef.current?.addStickyNote(color)
+                    }
                     onInviteOpen={() => setInviteOpen(true)}
                     onManageUsersOpen={() => setManageUsersOpen(true)}
                   />
@@ -639,9 +740,13 @@ export function WhiteboardPage() {
       <Dialog open={boardDialogOpen} onOpenChange={setBoardDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{editingBoard ? "Rename whiteboard" : "New whiteboard"}</DialogTitle>
+            <DialogTitle>
+              {editingBoard ? "Rename whiteboard" : "New whiteboard"}
+            </DialogTitle>
             <DialogDescription className="sr-only">
-              {editingBoard ? "Rename your existing whiteboard." : "Create a new whiteboard here."}
+              {editingBoard
+                ? "Rename your existing whiteboard."
+                : "Create a new whiteboard here."}
             </DialogDescription>
           </DialogHeader>
 
@@ -651,7 +756,12 @@ export function WhiteboardPage() {
               <Input
                 id="board-name"
                 value={boardForm.name}
-                onChange={(event) => setBoardForm((current) => ({ ...current, name: event.target.value }))}
+                onChange={(event) =>
+                  setBoardForm((current) => ({
+                    ...current,
+                    name: event.target.value,
+                  }))
+                }
                 placeholder="Design sprint"
               />
             </div>
@@ -665,10 +775,14 @@ export function WhiteboardPage() {
                     type="button"
                     className={cn(
                       "h-8 w-8 rounded-full border-2",
-                      boardForm.color === color ? "border-foreground" : "border-transparent"
+                      boardForm.color === color
+                        ? "border-foreground"
+                        : "border-transparent",
                     )}
                     style={{ backgroundColor: color }}
-                    onClick={() => setBoardForm((current) => ({ ...current, color }))}
+                    onClick={() =>
+                      setBoardForm((current) => ({ ...current, color }))
+                    }
                     aria-label={`Select color ${color}`}
                   />
                 ))}
@@ -677,7 +791,11 @@ export function WhiteboardPage() {
           </div>
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setBoardDialogOpen(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setBoardDialogOpen(false)}
+            >
               Cancel
             </Button>
             <Button type="button" onClick={() => void handleSaveBoard()}>
