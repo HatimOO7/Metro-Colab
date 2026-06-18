@@ -24,7 +24,6 @@ import {
   X,
 } from "lucide-react";
 import * as React from "react";
-
 import { Button } from "@/components/ui/button";
 import { DashboardPage, SettingsPage } from "@/components/dashboard-page";
 import { KanbanBoardPage } from "@/components/kanban-board";
@@ -34,6 +33,7 @@ import { WhiteboardPage } from "@/components/whiteboard-page";
 import { PagesSpacesPage } from "@/components/pages-spaces";
 import { AiTemplateBuilderPage } from "@/components/ai-template-builder";
 import { AppIcon, AppPreviewRenderer } from "@/components/ai-template-preview";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   collectKanbanSearchResults,
   filterCalendarItems,
@@ -218,20 +218,29 @@ function getCategory(name: string) {
 }
 
 export function AppShell() {
-  const [activeItem, setActiveItem] = React.useState("Dashboard");
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const activeItem = searchParams.get("tab") || "Dashboard";
+
+  const handleSetActiveItem: React.Dispatch<React.SetStateAction<string>> = (value) => {
+    const newValue = typeof value === "function" ? value(activeItem) : value;
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", newValue);
+    router.push(`?${params.toString()}`, { scroll: false });
+  };
 
   return (
     <WorkspaceDataProvider
-      onNavigateToKanban={() => setActiveItem("Task / Kanban")}
-      onNavigateToCalendar={() => setActiveItem("Calendar")}
+      onNavigateToKanban={() => handleSetActiveItem("Task / Kanban")}
+      onNavigateToCalendar={() => handleSetActiveItem("Calendar")}
     >
-      <IncomingCallProvider onNavigateToWhiteboard={() => setActiveItem("Whiteboard")}>
-        <AppShellContent activeItem={activeItem} setActiveItem={setActiveItem} />
+      <IncomingCallProvider onNavigateToWhiteboard={() => handleSetActiveItem("Whiteboard")}>
+        <AppShellContent activeItem={activeItem} setActiveItem={handleSetActiveItem} />
       </IncomingCallProvider>
     </WorkspaceDataProvider>
   );
 }
-
 function AppShellContent({
   activeItem,
   setActiveItem,
