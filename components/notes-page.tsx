@@ -225,10 +225,9 @@ export function NotesPage() {
     immediatelyRender: false,
     editorProps: {
       attributes: {
-        class: "outline-none whitespace-pre-wrap min-h-[400px] pb-32",
+        class: "outline-none whitespace-pre-wrap min-h-full pb-32 flex-1",
       },
       handleKeyDown(view, event) {
-        // Handle custom navigation in Slash commands dropdown
         if (slashMenuOpen) {
           if (event.key === "ArrowDown") {
             setSlashSelectedIndex((prev) => (prev + 1) % slashItems.length);
@@ -256,19 +255,14 @@ export function NotesPage() {
     },
     onUpdate({ editor }) {
       if (isSettingContent.current) return;
-
-      // Text length check for slash command trigger
       const { selection } = editor.state;
       const { $from } = selection;
       const textBefore = $from.nodeBefore?.isText ? $from.nodeBefore.text : "";
-      
       if (textBefore && textBefore.endsWith("/")) {
-        // Find cursor coordinates
         const view = editor.view;
         const coords = view.coordsAtPos($from.pos);
         const editorEl = view.dom;
         const rect = editorEl.getBoundingClientRect();
-        
         setSlashMenuPos({
           top: coords.bottom - rect.top + editorEl.scrollTop + 8,
           left: coords.left - rect.left,
@@ -930,197 +924,193 @@ export function NotesPage() {
             </div>
 
             {/* Writing Area */}
-            <div className="flex-1 overflow-y-auto px-10 py-6 relative">
-              {/* Tiptap HTML Canvas */}
-              {editor && (
-                <>
-                  <div
-                    className={cn(
-                      "prose prose-sm sm:prose lg:prose-lg max-w-none dark:prose-invert focus:outline-none relative",
-                      isAiRefining && "pointer-events-none opacity-60"
-                    )}
-                  >
-                    {isAiRefining && (
-                      <div className="absolute inset-0 z-10 flex items-start justify-center pt-8">
-                        <div className="flex items-center gap-2 rounded-lg border border-violet-200 bg-white/90 px-3 py-2 text-xs font-medium text-violet-700 shadow-sm">
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          Refining with AI...
-                        </div>
-                      </div>
-                    )}
-                    <EditorContent editor={editor} />
-                  </div>
-
-                  {/* Tiptap Bubble Menu */}
-                  <BubbleMenu
-                    editor={editor}
-                    className="flex items-center gap-0.5 border border-border bg-white shadow-soft rounded-lg p-1 z-50"
-                  >
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className={cn("h-7 w-7 rounded-md", editor.isActive("bold") && "bg-sidebar")}
-                      onClick={() => editor.chain().focus().toggleBold().run()}
-                      onMouseDown={(e) => e.preventDefault()}
-                    >
-                      <BoldIcon className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className={cn("h-7 w-7 rounded-md", editor.isActive("italic") && "bg-sidebar")}
-                      onClick={() => editor.chain().focus().toggleItalic().run()}
-                      onMouseDown={(e) => e.preventDefault()}
-                    >
-                      <ItalicIcon className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className={cn("h-7 w-7 rounded-md", editor.isActive("underline") && "bg-sidebar")}
-                      onClick={() => editor.chain().focus().toggleUnderline().run()}
-                      onMouseDown={(e) => e.preventDefault()}
-                    >
-                      <UnderlineIcon className="h-3.5 w-3.5" />
-                    </Button>
-                    <div className="w-px h-4 bg-border/80 mx-1" />
-                    {/* AI Refine Dropdown inside Bubble Menu */}
-                    <DropdownMenu
-                      modal={false}
-                      onOpenChange={(open) => {
-                        if (open) captureAiSelection();
-                      }}
-                    >
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          disabled={isAiRefining}
-                          className={cn(
-                            "h-7 px-2 rounded-md text-xs font-medium text-violet-700 hover:text-violet-800 hover:bg-violet-50 flex items-center gap-1",
-                            isAiRefining && "opacity-70"
-                          )}
-                          onMouseDown={(e) => e.preventDefault()}
-                        >
-                          {isAiRefining ? (
-                            <Loader2 className="h-3 w-3 text-violet-600 animate-spin" />
-                          ) : (
-                            <Sparkles className="h-3 w-3 text-violet-600 animate-pulse" />
-                          )}
-                          {isAiRefining ? "Refining..." : "AI Refine"}
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent
-                        side="top"
-                        className="w-44"
-                        onCloseAutoFocus={(e) => e.preventDefault()}
-                      >
-                        <DropdownMenuItem
-                          onSelect={() => void runAiRefine("grammar")}
-                          disabled={isAiRefining}
-                          className="text-[11px]"
-                        >
-                          {isAiRefining ? (
-                            <Loader2 className="h-3 w-3 animate-spin text-violet-600" />
-                          ) : null}
-                          Improve grammar
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onSelect={() => void runAiRefine("rephrase")}
-                          disabled={isAiRefining}
-                          className="text-[11px]"
-                        >
-                          Rephrase
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onSelect={() => void runAiRefine("shorter")}
-                          disabled={isAiRefining}
-                          className="text-[11px]"
-                        >
-                          Make shorter
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onSelect={() => void runAiRefine("longer")}
-                          disabled={isAiRefining}
-                          className="text-[11px]"
-                        >
-                          Make longer
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onSelect={() => void runAiRefine("simplify")}
-                          disabled={isAiRefining}
-                          className="text-[11px]"
-                        >
-                          Simplify language
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuLabel className="text-[8px] font-bold uppercase tracking-wider text-muted-foreground">
-                          Change Tone
-                        </DropdownMenuLabel>
-                        <DropdownMenuItem
-                          onSelect={() => void runAiRefine("tone", "professional")}
-                          disabled={isAiRefining}
-                          className="text-[11px]"
-                        >
-                          💼 Professional
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onSelect={() => void runAiRefine("tone", "casual")}
-                          disabled={isAiRefining}
-                          className="text-[11px]"
-                        >
-                          ☕ Casual
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onSelect={() => void runAiRefine("tone", "creative")}
-                          disabled={isAiRefining}
-                          className="text-[11px]"
-                        >
-                          🎨 Creative
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </BubbleMenu>
-
-                  {/* Notion-Style Floating Slash Suggestion Popup */}
-                  {slashMenuOpen && (
-                    <div
-                      style={{
-                        position: "absolute",
-                        top: slashMenuPos.top,
-                        left: Math.max(16, Math.min(slashMenuPos.left, 550)),
-                      }}
-                      className="w-56 bg-white border border-border shadow-lg rounded-lg p-1 z-40 max-h-[300px] overflow-y-auto flex flex-col font-sans"
-                    >
-                      <div className="px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-muted-foreground border-b border-border/50 mb-1">
-                        Basic Blocks
-                      </div>
-                      {slashItems.map((item, index) => {
-                        const Icon = item.icon;
-                        return (
-                          <button
-                            key={item.id}
-                            onClick={() => handleSelectSlashItem(item.id)}
-                            className={cn(
-                              "w-full text-left px-2 py-1.5 rounded-md flex items-center gap-2.5 transition text-xs",
-                              index === slashSelectedIndex ? "bg-sidebar text-foreground font-medium" : "hover:bg-sidebar/55 text-muted-foreground hover:text-foreground"
-                            )}
-                          >
-                            <span className="h-6 w-6 rounded bg-card flex items-center justify-center shrink-0 border border-border/60">
-                              <Icon className="h-3.5 w-3.5 text-foreground" />
-                            </span>
-                            <div className="min-w-0 flex-1">
-                              <p className="font-semibold text-foreground truncate">{item.label}</p>
-                              <p className="text-[10px] text-muted-foreground truncate">{item.description}</p>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </>
-              )}
+            <div className="flex-1 overflow-y-auto px-10 py-6 relative flex flex-col">
+  {editor && (
+    <>
+      <div
+        className={cn(
+          "prose prose-sm sm:prose lg:prose-lg !max-w-none dark:prose-invert focus:outline-none relative flex-1 flex flex-col min-h-full w-full",
+          isAiRefining && "pointer-events-none opacity-60"
+        )}
+      >
+        {isAiRefining && (
+          <div className="absolute inset-0 z-10 flex items-start justify-center pt-8">
+            <div className="flex items-center gap-2 rounded-lg border border-violet-200 bg-white/90 px-3 py-2 text-xs font-medium text-violet-700 shadow-sm">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Refining with AI...
             </div>
+          </div>
+        )}
+        <EditorContent editor={editor} className="flex-1 flex flex-col min-h-full w-full" />
+      </div>
+
+      <BubbleMenu
+        editor={editor}
+        className="flex items-center gap-0.5 border border-border bg-white shadow-soft rounded-lg p-1 z-50"
+      >
+        <Button
+          variant="ghost"
+          size="icon"
+          className={cn("h-7 w-7 rounded-md", editor.isActive("bold") && "bg-sidebar")}
+          onClick={() => editor.chain().focus().toggleBold().run()}
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          <BoldIcon className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className={cn("h-7 w-7 rounded-md", editor.isActive("italic") && "bg-sidebar")}
+          onClick={() => editor.chain().focus().toggleItalic().run()}
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          <ItalicIcon className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className={cn("h-7 w-7 rounded-md", editor.isActive("underline") && "bg-sidebar")}
+          onClick={() => editor.chain().focus().toggleUnderline().run()}
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          <UnderlineIcon className="h-3.5 w-3.5" />
+        </Button>
+        <div className="w-px h-4 bg-border/80 mx-1" />
+        <DropdownMenu
+          modal={false}
+          onOpenChange={(open) => {
+            if (open) captureAiSelection();
+          }}
+        >
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={isAiRefining}
+              className={cn(
+                "h-7 px-2 rounded-md text-xs font-medium text-violet-700 hover:text-violet-800 hover:bg-violet-50 flex items-center gap-1",
+                isAiRefining && "opacity-70"
+              )}
+              onMouseDown={(e) => e.preventDefault()}
+            >
+              {isAiRefining ? (
+                <Loader2 className="h-3 w-3 text-violet-600 animate-spin" />
+              ) : (
+                <Sparkles className="h-3 w-3 text-violet-600 animate-pulse" />
+              )}
+              {isAiRefining ? "Refining..." : "AI Refine"}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            side="top"
+            className="w-44"
+            onCloseAutoFocus={(e) => e.preventDefault()}
+          >
+            <DropdownMenuItem
+              onSelect={() => void runAiRefine("grammar")}
+              disabled={isAiRefining}
+              className="text-[11px]"
+            >
+              {isAiRefining ? (
+                <Loader2 className="h-3 w-3 animate-spin text-violet-600" />
+              ) : null}
+              Improve grammar
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() => void runAiRefine("rephrase")}
+              disabled={isAiRefining}
+              className="text-[11px]"
+            >
+              Rephrase
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() => void runAiRefine("shorter")}
+              disabled={isAiRefining}
+              className="text-[11px]"
+            >
+              Make shorter
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() => void runAiRefine("longer")}
+              disabled={isAiRefining}
+              className="text-[11px]"
+            >
+              Make longer
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() => void runAiRefine("simplify")}
+              disabled={isAiRefining}
+              className="text-[11px]"
+            >
+              Simplify language
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel className="text-[8px] font-bold uppercase tracking-wider text-muted-foreground">
+              Change Tone
+            </DropdownMenuLabel>
+            <DropdownMenuItem
+              onSelect={() => void runAiRefine("tone", "professional")}
+              disabled={isAiRefining}
+              className="text-[11px]"
+            >
+              💼 Professional
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() => void runAiRefine("tone", "casual")}
+              disabled={isAiRefining}
+              className="text-[11px]"
+            >
+              ☕ Casual
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() => void runAiRefine("tone", "creative")}
+              disabled={isAiRefining}
+              className="text-[11px]"
+            >
+              🎨 Creative
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </BubbleMenu>
+
+      {slashMenuOpen && (
+        <div
+          style={{
+            position: "absolute",
+            top: slashMenuPos.top,
+            left: Math.max(16, Math.min(slashMenuPos.left, 550)),
+          }}
+          className="w-56 bg-white border border-border shadow-lg rounded-lg p-1 z-40 max-h-[300px] overflow-y-auto flex flex-col font-sans"
+        >
+          <div className="px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-muted-foreground border-b border-border/50 mb-1">
+            Basic Blocks
+          </div>
+          {slashItems.map((item, index) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.id}
+                onClick={() => handleSelectSlashItem(item.id)}
+                className={cn(
+                  "w-full text-left px-2 py-1.5 rounded-md flex items-center gap-2.5 transition text-xs",
+                  index === slashSelectedIndex ? "bg-sidebar text-foreground font-medium" : "hover:bg-sidebar/55 text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <span className="h-6 w-6 rounded bg-card flex items-center justify-center shrink-0 border border-border/60">
+                  <Icon className="h-3.5 w-3.5 text-foreground" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-foreground truncate">{item.label}</p>
+                  <p className="text-[10px] text-muted-foreground truncate">{item.description}</p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </>
+  )}
+</div>
 
             {/* Bottom metadata / Info bar */}
             <div className="shrink-0 border-t border-border/75 px-6 py-2 bg-sidebar/5 flex items-center justify-between text-[10px] text-muted-foreground">
