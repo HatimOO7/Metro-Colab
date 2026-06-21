@@ -35,10 +35,7 @@ function normalizeOrders(value: unknown): ColumnOrder[] | null {
 
 export async function PATCH(request: Request) {
   const user = await getDatabaseUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await request.json().catch(() => null);
 
@@ -113,12 +110,11 @@ export async function PATCH(request: Request) {
       UPDATE kanban_tasks AS t
       SET
         column_id = v.column_id::integer,
-        position = v.position::integer,
+        position  = v.position::integer,
         updated_at = ${now}
       FROM (VALUES ${sql.join(valueRows, sql`, `)}) AS v(id, column_id, position)
       WHERE t.id = v.id::integer AND t.board_id = ${boardId}
     `);
   }
-
-  return NextResponse.json({ board: await getBoardWithDetails(boardId, user.id) });
+  return NextResponse.json({ success: true });
 }

@@ -182,7 +182,7 @@ export async function getBoardWithDetails(boardId: number, userId: number) {
     .from(kanbanBoards)
     .innerJoin(users, eq(kanbanBoards.userId, users.id))
     .leftJoin(kanbanColumns, eq(kanbanColumns.boardId, kanbanBoards.id))
-    .leftJoin(kanbanTasks, eq(kanbanTasks.boardId, kanbanBoards.id))
+    .leftJoin(kanbanTasks, eq(kanbanTasks.columnId, kanbanColumns.id)) // ← was boardId
     .where(and(eq(kanbanBoards.id, boardId), eq(kanbanBoards.userId, userId)))
     .orderBy(
       asc(kanbanColumns.position),
@@ -311,16 +311,18 @@ export async function syncTaskToCalendar(task: KanbanTask, userId: number): Prom
       return { task, calendarItem: null };
     }
 
-    await db
-      .delete(calendarItems)
-      .where(and(eq(calendarItems.id, task.calendarItemId), eq(calendarItems.userId, userId)));
-    const [updatedTask] = await db
-      .update(kanbanTasks)
-      .set({ calendarItemId: null, updatedAt: now })
-      .where(eq(kanbanTasks.id, task.id))
-      .returning();
+    const [, [updatedTask]] = await Promise.all([
+  db
+    .delete(calendarItems)
+    .where(and(eq(calendarItems.id, task.calendarItemId!), eq(calendarItems.userId, userId))),
+  db
+    .update(kanbanTasks)
+    .set({ calendarItemId: null, updatedAt: now })
+    .where(eq(kanbanTasks.id, task.id))
+    .returning(),
+]);
 
-    return { task: updatedTask ?? task, calendarItem: null };
+return { task: updatedTask ?? task, calendarItem: null };
   }
 
   const category = priorityCategory[task.priority as keyof typeof priorityCategory] ?? priorityCategory.Medium;
@@ -339,21 +341,16 @@ export async function syncTaskToCalendar(task: KanbanTask, userId: number): Prom
   };
 
   if (task.calendarItemId) {
-    const [item] = await db
-      .update(calendarItems)
-      .set(calendarInput)
-      .where(and(eq(calendarItems.id, task.calendarItemId), eq(calendarItems.userId, userId)))
-      .returning();
+  const [item] = await db
+    .update(calendarItems)
+    .set(calendarInput)
+    .where(and(eq(calendarItems.id, task.calendarItemId), eq(calendarItems.userId, userId)))
+    .returning();
 
-    if (item) {
-      const [updatedTask] = await db
-        .select()
-        .from(kanbanTasks)
-        .where(eq(kanbanTasks.id, task.id));
-
-      return { task: updatedTask ?? task, calendarItem: item };
-    }
+  if (item) {
+    return { task, calendarItem: item };
   }
+}
 
   const [item] = await db.insert(calendarItems).values(calendarInput).returning();
 

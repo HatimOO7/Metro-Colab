@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 
 import { db } from "@/db";
 import { kanbanBoards, users } from "@/db/schema";
+import { getBoardWithDetails } from "@/lib/kanban";
 
 export async function POST(request: Request, props: { params: Promise<{ id: string }> }) {
   try {
@@ -66,14 +67,12 @@ export async function POST(request: Request, props: { params: Promise<{ id: stri
 
     const { getBoardWithDetails } = await import("@/lib/kanban");
     const boardWithColumns = await getBoardWithDetails(boardId, dbUser.id);
-
     return NextResponse.json({ board: boardWithColumns }, { status: 200 });
   } catch (error) {
     console.error("Failed to share board:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
-
 export async function DELETE(request: Request, props: { params: Promise<{ id: string }> }) {
   try {
     const params = await props.params;
@@ -132,7 +131,6 @@ export async function DELETE(request: Request, props: { params: Promise<{ id: st
 
     const { getBoardWithDetails } = await import("@/lib/kanban");
     const boardWithColumns = await getBoardWithDetails(boardId, dbUser.id);
-
     return NextResponse.json({ board: boardWithColumns }, { status: 200 });
   } catch (error) {
     console.error("Failed to unshare board:", error);

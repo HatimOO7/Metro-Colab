@@ -1,7 +1,6 @@
 "use client";
 
 import { useUser } from "@clerk/nextjs";
-
 import {
   CalendarDays,
   Check,
@@ -73,6 +72,29 @@ const priorityClasses = {
   Medium: "bg-sky-100 text-sky-700",
   High: "bg-fuchsia-100 text-fuchsia-700",
 };
+
+const ThreadCountsContext = React.createContext<Map<string, number>>(new Map());
+
+function ThreadCountsProvider({ children }: { children: React.ReactNode }) {
+  const { threads } = useThreads();
+
+  const countsByTaskId = React.useMemo(() => {
+    const map = new Map<string, number>();
+    for (const thread of threads ?? []) {
+      const taskId = thread.metadata?.taskId as string | undefined;
+      if (taskId) {
+        map.set(taskId, (map.get(taskId) ?? 0) + thread.comments.length);
+      }
+    }
+    return map;
+  }, [threads]);
+
+  return (
+    <ThreadCountsContext.Provider value={countsByTaskId}>
+      {children}
+    </ThreadCountsContext.Provider>
+  );
+}
 
 function getTodayKey() {
   const today = new Date();
@@ -499,9 +521,7 @@ export function KanbanBoardPage() {
           upsertCalendarItem(syncedCalendarItem);
         } else if (!serverTask.syncCalendar && previousCalendarItemId) {
           removeCalendarItem(previousCalendarItemId);
-        }
-
-        if (shouldRefreshCalendar || serverTask.syncCalendar) {
+        } else if (shouldRefreshCalendar || serverTask.syncCalendar) {
           await reloadCalendarItems({ silent: true });
         }
       } catch (saveError) {
@@ -671,254 +691,256 @@ export function KanbanBoardPage() {
         }
       }}
     >
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 px-4 py-5 lg:px-6">
-      {(error || actionError) && (
-        <div className="rounded-lg border border-destructive/25 bg-red-50 px-3 py-2 text-sm text-destructive">
-          {error ?? actionError}
-          {error && (
-            <button type="button" className="ml-2 font-semibold underline" onClick={() => void reloadKanbanBoards()}>
-              Retry
-            </button>
-          )}
-        </div>
-      )}
-
-      {searchQuery.trim() && searchResults.length > 0 && (
-        <div className="rounded-lg border border-border bg-white p-3 shadow-soft">
-          <p className="text-xs font-semibold text-muted-foreground">
-            {searchResults.length} matching task{searchResults.length === 1 ? "" : "s"}
-          </p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {searchResults.map(({ board, column, task }) => (
-              <button
-                key={task.id}
-                type="button"
-                onClick={() => {
-                  setSelectedBoardId(board.id);
-                  setTaskDialog({ columnId: column.id, task });
-                }}
-                className="max-w-full rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-left transition hover:bg-emerald-100"
-              >
-                <span className="block truncate text-xs font-semibold text-foreground">{task.title}</span>
-                <span className="block truncate text-[10px] text-muted-foreground">
-                  {board.name} · {column.name}
-                </span>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 px-4 py-5 lg:px-6">
+        {(error || actionError) && (
+          <div className="rounded-lg border border-destructive/25 bg-red-50 px-3 py-2 text-sm text-destructive">
+            {error ?? actionError}
+            {error && (
+              <button type="button" className="ml-2 font-semibold underline" onClick={() => void reloadKanbanBoards()}>
+                Retry
               </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
-        <aside className="min-w-0 rounded-lg border border-border bg-card p-3 shadow-soft">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold">Boards</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">{boards.length} active</p>
-            </div>
-            <Button
-              type="button"
-              size="icon"
-              className="h-8 w-8 rounded-lg"
-              onClick={() => {
-                setEditingBoard(null);
-                setBoardDialogOpen(true);
-              }}
-              aria-label="Create board"
-              title="Create board"
-            >
-              <Plus className="h-4 w-4" aria-hidden="true" />
-            </Button>
-          </div>
-
-          <div className="mt-3 space-y-1.5">
-            {loading && (
-              <div className="space-y-1.5" aria-busy="true" aria-label="Loading boards">
-                <div className="h-12 animate-pulse rounded-lg bg-muted" />
-                <div className="h-12 animate-pulse rounded-lg bg-muted" />
-                <div className="h-12 animate-pulse rounded-lg bg-muted" />
-              </div>
             )}
+          </div>
+        )}
 
-            {!loading && boards.length === 0 && (
-              <div className="rounded-lg border border-dashed border-border bg-white/80 p-4 text-sm leading-6 text-muted-foreground">
-                Create a board to start organizing tasks.
-              </div>
-            )}
-
-            {!loading &&
-              boards.map((board) => (
-                <div
-                  key={board.id}
-                  className={cn(
-                    "group flex items-center gap-2 rounded-lg border px-2 py-2 transition",
-                    selectedBoard?.id === board.id
-                      ? "border-emerald-200 bg-emerald-50 text-foreground shadow-soft"
-                      : "border-transparent hover:bg-white/80"
-                  )}
+        {searchQuery.trim() && searchResults.length > 0 && (
+          <div className="rounded-lg border border-border bg-white p-3 shadow-soft">
+            <p className="text-xs font-semibold text-muted-foreground">
+              {searchResults.length} matching task{searchResults.length === 1 ? "" : "s"}
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {searchResults.map(({ board, column, task }) => (
+                <button
+                  key={task.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedBoardId(board.id);
+                    setTaskDialog({ columnId: column.id, task });
+                  }}
+                  className="max-w-full rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-left transition hover:bg-emerald-100"
                 >
-                  <button
-                    type="button"
-                    onClick={() => setSelectedBoardId(board.id)}
-                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                  >
-                    <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: board.color }} />
-                    <span className="truncate text-sm font-semibold">{board.name}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingBoard(board);
-                      setBoardDialogOpen(true);
-                    }}
-                    className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-muted-foreground opacity-0 transition hover:bg-white hover:text-foreground group-hover:opacity-100"
-                    aria-label={`Edit ${board.name}`}
-                    title="Edit board"
-                  >
-                    <Edit3 className="h-3.5 w-3.5" aria-hidden="true" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleDeleteBoard(board)}
-                    className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-muted-foreground opacity-0 transition hover:bg-red-50 hover:text-destructive group-hover:opacity-100"
-                    aria-label={`Delete ${board.name}`}
-                    title="Delete board"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                  </button>
-                </div>
+                  <span className="block truncate text-xs font-semibold text-foreground">{task.title}</span>
+                  <span className="block truncate text-[10px] text-muted-foreground">
+                    {board.name} · {column.name}
+                  </span>
+                </button>
               ))}
+            </div>
           </div>
-        </aside>
+        )}
 
-        <section className="min-w-0 rounded-lg border border-border bg-card p-3 shadow-soft sm:p-4">
-          {loading ? (
-            <div className="space-y-4" aria-busy="true" aria-label="Loading kanban board">
-              <div className="flex items-center gap-2">
-                <div className="h-3 w-3 animate-pulse rounded-full bg-muted" />
-                <div className="h-6 w-40 animate-pulse rounded-md bg-muted" />
+        <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
+          <aside className="min-w-0 rounded-lg border border-border bg-card p-3 shadow-soft">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold">Boards</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">{boards.length} active</p>
               </div>
-              <div className="flex gap-3 overflow-hidden">
-                {[0, 1, 2].map((column) => (
-                  <div key={column} className="w-[280px] shrink-0 space-y-2 rounded-lg border border-border bg-white/85 p-3">
-                    <div className="h-5 w-24 animate-pulse rounded-md bg-muted" />
-                    <div className="h-20 animate-pulse rounded-lg bg-muted" />
-                    <div className="h-20 animate-pulse rounded-lg bg-muted" />
+              <Button
+                type="button"
+                size="icon"
+                className="h-8 w-8 rounded-lg"
+                onClick={() => {
+                  setEditingBoard(null);
+                  setBoardDialogOpen(true);
+                }}
+                aria-label="Create board"
+                title="Create board"
+              >
+                <Plus className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            </div>
+
+            <div className="mt-3 space-y-1.5">
+              {loading && (
+                <div className="space-y-1.5" aria-busy="true" aria-label="Loading boards">
+                  <div className="h-12 animate-pulse rounded-lg bg-muted" />
+                  <div className="h-12 animate-pulse rounded-lg bg-muted" />
+                  <div className="h-12 animate-pulse rounded-lg bg-muted" />
+                </div>
+              )}
+
+              {!loading && boards.length === 0 && (
+                <div className="rounded-lg border border-dashed border-border bg-white/80 p-4 text-sm leading-6 text-muted-foreground">
+                  Create a board to start organizing tasks.
+                </div>
+              )}
+
+              {!loading &&
+                boards.map((board) => (
+                  <div
+                    key={board.id}
+                    className={cn(
+                      "group flex items-center gap-2 rounded-lg border px-2 py-2 transition",
+                      selectedBoard?.id === board.id
+                        ? "border-emerald-200 bg-emerald-50 text-foreground shadow-soft"
+                        : "border-transparent hover:bg-white/80"
+                    )}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setSelectedBoardId(board.id)}
+                      className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                    >
+                      <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: board.color }} />
+                      <span className="truncate text-sm font-semibold">{board.name}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingBoard(board);
+                        setBoardDialogOpen(true);
+                      }}
+                      className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-muted-foreground opacity-0 transition hover:bg-white hover:text-foreground group-hover:opacity-100"
+                      aria-label={`Edit ${board.name}`}
+                      title="Edit board"
+                    >
+                      <Edit3 className="h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleDeleteBoard(board)}
+                      className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-muted-foreground opacity-0 transition hover:bg-red-50 hover:text-destructive group-hover:opacity-100"
+                      aria-label={`Delete ${board.name}`}
+                      title="Delete board"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
                   </div>
                 ))}
-              </div>
             </div>
-          ) : !sortedSelectedBoard ? (
-            <div className="grid min-h-[420px] place-items-center rounded-lg border border-dashed border-border bg-white/70 p-6 text-center">
-              <div>
-                <ClipboardCheck className="mx-auto h-9 w-9 text-emerald-600" aria-hidden="true" />
-                <p className="mt-3 text-sm font-semibold">
-                  {searchQuery.trim() ? "No matching boards or tasks" : "No board selected"}
-                </p>
-                <p className="mt-1 max-w-sm text-sm leading-6 text-muted-foreground">
-                  {searchQuery.trim()
-                    ? "Try a different search term or clear the search bar."
-                    : "Create a board and Metro Colab will add Todo, In Progress, and Done columns."}
-                </p>
+          </aside>
+
+          <section className="min-w-0 rounded-lg border border-border bg-card p-3 shadow-soft sm:p-4">
+            {loading ? (
+              <div className="space-y-4" aria-busy="true" aria-label="Loading kanban board">
+                <div className="flex items-center gap-2">
+                  <div className="h-3 w-3 animate-pulse rounded-full bg-muted" />
+                  <div className="h-6 w-40 animate-pulse rounded-md bg-muted" />
+                </div>
+                <div className="flex gap-3 overflow-hidden">
+                  {[0, 1, 2].map((column) => (
+                    <div key={column} className="w-[280px] shrink-0 space-y-2 rounded-lg border border-border bg-white/85 p-3">
+                      <div className="h-5 w-24 animate-pulse rounded-md bg-muted" />
+                      <div className="h-20 animate-pulse rounded-lg bg-muted" />
+                      <div className="h-20 animate-pulse rounded-lg bg-muted" />
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          ) : (
-            <RoomProvider id={`kanban-board-${sortedSelectedBoard.id}`} initialPresence={{}}>
-              <ClientSideSuspense fallback={<div className="p-4 text-center text-sm text-muted-foreground">Loading collaboration...</div>}>
-                <>
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="h-3 w-3 rounded-full" style={{ backgroundColor: sortedSelectedBoard.color }} />
-                        <h2 className="truncate text-xl font-semibold">{sortedSelectedBoard.name}</h2>
+            ) : !sortedSelectedBoard ? (
+              <div className="grid min-h-[420px] place-items-center rounded-lg border border-dashed border-border bg-white/70 p-6 text-center">
+                <div>
+                  <ClipboardCheck className="mx-auto h-9 w-9 text-emerald-600" aria-hidden="true" />
+                  <p className="mt-3 text-sm font-semibold">
+                    {searchQuery.trim() ? "No matching boards or tasks" : "No board selected"}
+                  </p>
+                  <p className="mt-1 max-w-sm text-sm leading-6 text-muted-foreground">
+                    {searchQuery.trim()
+                      ? "Try a different search term or clear the search bar."
+                      : "Create a board and Metro Colab will add Todo, In Progress, and Done columns."}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <RoomProvider id={`kanban-board-${sortedSelectedBoard.id}`} initialPresence={{}}>
+                <ClientSideSuspense fallback={<div className="p-4 text-center text-sm text-muted-foreground">Loading collaboration...</div>}>
+                  <ThreadCountsProvider>
+                    <>
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="h-3 w-3 rounded-full" style={{ backgroundColor: sortedSelectedBoard.color }} />
+                            <h2 className="truncate text-xl font-semibold">{sortedSelectedBoard.name}</h2>
+                          </div>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {sortedSelectedBoard.columns.length}/5 columns
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <ActiveCollaborators />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="h-9 rounded-lg bg-white text-xs hover:bg-muted"
+                            onClick={() => setShareDialogOpen(true)}
+                          >
+                            <Users className="mr-2 h-4 w-4" aria-hidden="true" />
+                            Share
+                          </Button>
+                          <Button
+                            type="button"
+                            className="h-9 rounded-lg bg-foreground text-xs text-background hover:bg-foreground/90"
+                            onClick={() => void handleAddColumn()}
+                            disabled={sortedSelectedBoard.columns.length >= 5}
+                          >
+                            <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+                            Add column
+                          </Button>
+                        </div>
                       </div>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {sortedSelectedBoard.columns.length}/5 columns
-                      </p>
-                    </div>
 
-                    <div className="flex items-center gap-2">
-                      <ActiveCollaborators />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="h-9 rounded-lg bg-white text-xs hover:bg-muted"
-                        onClick={() => setShareDialogOpen(true)}
-                      >
-                        <Users className="mr-2 h-4 w-4" aria-hidden="true" />
-                        Share
-                      </Button>
-                      <Button
-                        type="button"
-                        className="h-9 rounded-lg bg-foreground text-xs text-background hover:bg-foreground/90"
-                        onClick={() => void handleAddColumn()}
-                        disabled={sortedSelectedBoard.columns.length >= 5}
-                      >
-                        <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
-                        Add column
-                      </Button>
-                    </div>
-                  </div>
+                      <div className="mt-4 min-w-0 overflow-x-auto pb-2">
+                        <div className="flex min-h-[460px] w-max gap-3 pr-2">
+                          {sortedSelectedBoard.columns.map((column) => {
+                            const isDragSource = column.tasks.some((task) => task.id === draggingTaskId);
+                            const isDropTarget = draggingTaskId !== null && !isDragSource;
 
-                  <div className="mt-4 min-w-0 overflow-x-auto pb-2">
-                    <div className="flex min-h-[460px] w-max gap-3 pr-2">
-                      {sortedSelectedBoard.columns.map((column) => {
-                        const isDragSource = column.tasks.some((task) => task.id === draggingTaskId);
-                        const isDropTarget = draggingTaskId !== null && !isDragSource;
+                            return (
+                              <KanbanColumnView
+                                key={column.id}
+                                column={column}
+                                isDropTarget={isDropTarget}
+                                onAddTask={handleAddTask}
+                                onRename={handleRenameColumn}
+                                onDelete={handleDeleteColumn}
+                                onEditTask={openTaskDialog}
+                                onDeleteTask={handleDeleteTask}
+                                onDragStart={handleDragStart}
+                                onDragEnd={handleDragEnd}
+                                onDrop={handleTaskDrop}
+                              />
+                            );
+                          })}
+                        </div>
+                      </div>
+                      {taskDialog && (
+                        <KanbanTaskSheet
+                          task={taskDialog.task}
+                          error={actionError}
+                          onClose={() => setTaskDialog(null)}
+                          onSave={handleSaveTask}
+                        />
+                      )}
+                    </>
+                  </ThreadCountsProvider>
+                </ClientSideSuspense>
+              </RoomProvider>
+            )}
+          </section>
+        </div>
 
-                        return (
-                          <KanbanColumnView
-                            key={column.id}
-                            column={column}
-                            isDropTarget={isDropTarget}
-                            onAddTask={handleAddTask}
-                            onRename={handleRenameColumn}
-                            onDelete={handleDeleteColumn}
-                            onEditTask={openTaskDialog}
-                            onDeleteTask={handleDeleteTask}
-                            onDragStart={handleDragStart}
-                            onDragEnd={handleDragEnd}
-                            onDrop={handleTaskDrop}
-                          />
-                        );
-                      })}
-                    </div>
-                  </div>
-                  {taskDialog && (
-                    <KanbanTaskSheet
-                      task={taskDialog.task}
-                      error={actionError}
-                      onClose={() => setTaskDialog(null)}
-                      onSave={handleSaveTask}
-                    />
-                  )}
-                </>
-              </ClientSideSuspense>
-            </RoomProvider>
-          )}
-        </section>
+        {boardDialogOpen && (
+          <BoardDialog
+            board={editingBoard}
+            error={actionError}
+            onClose={() => {
+              setBoardDialogOpen(false);
+              setEditingBoard(null);
+            }}
+            onSave={handleSaveBoard}
+          />
+        )}
+
+        {shareDialogOpen && sortedSelectedBoard && (
+          <ShareBoardDialog
+            board={sortedSelectedBoard}
+            onClose={() => setShareDialogOpen(false)}
+            onUpdateBoard={replaceBoard}
+          />
+        )}
       </div>
-
-      {boardDialogOpen && (
-        <BoardDialog
-          board={editingBoard}
-          error={actionError}
-          onClose={() => {
-            setBoardDialogOpen(false);
-            setEditingBoard(null);
-          }}
-          onSave={handleSaveBoard}
-        />
-      )}
-
-      {shareDialogOpen && sortedSelectedBoard && (
-        <ShareBoardDialog
-          board={sortedSelectedBoard}
-          onClose={() => setShareDialogOpen(false)}
-          onUpdateBoard={replaceBoard}
-        />
-      )}
-    </div>
     </LiveblocksProvider>
   );
 }
@@ -1147,16 +1169,16 @@ const KanbanTaskCard = React.memo(function KanbanTaskCard({
 });
 
 function TaskCommentsIndicator({ taskId }: { taskId: number }) {
-  const { threads } = useThreads({ query: { metadata: { taskId: String(taskId) } } });
-  
-  if (!threads || threads.length === 0) return null;
-  
-  const commentsCount = threads.reduce((acc, thread) => acc + thread.comments.length, 0);
-  
+  const countsByTaskId = React.useContext(ThreadCountsContext);
+  const commentsCount = countsByTaskId.get(String(taskId)) ?? 0;
+
   if (commentsCount === 0) return null;
 
   return (
-    <Badge variant="secondary" className="flex items-center gap-1.5 px-2 py-0.5 text-[10px] h-6 font-semibold shadow-sm hover:bg-secondary/80 transition-colors">
+    <Badge
+      variant="secondary"
+      className="flex items-center gap-1.5 px-2 py-0.5 text-[10px] h-6 font-semibold shadow-sm hover:bg-secondary/80 transition-colors"
+    >
       <MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />
       {commentsCount}
     </Badge>
@@ -1291,143 +1313,141 @@ function KanbanTaskSheet({
           !task && "md:max-w-xl"
         )}
       >
-        {/* Task Form Section */}
         <div className="flex flex-col flex-1 h-full max-h-[100dvh] overflow-y-auto p-6 relative">
           <SheetHeader className="mb-4 text-left">
             <SheetTitle>{task ? "Edit task" : "Create task"}</SheetTitle>
           </SheetHeader>
           <form className="space-y-4 flex-1" onSubmit={(event) => event.preventDefault()}>
-          <label className="block">
-            <span className="text-xs font-semibold text-muted-foreground">Title</span>
-            <input
-              value={form.title}
-              onChange={(event) => updateForm("title", event.target.value)}
-              className="mt-1 h-10 w-full rounded-lg border border-input bg-white px-3 text-sm outline-none transition focus:ring-2 focus:ring-ring/30"
-              placeholder="Write release notes"
-              autoFocus
-            />
-          </label>
-
-          <label className="block">
-            <span className="text-xs font-semibold text-muted-foreground">Description</span>
-            <textarea
-              value={form.description}
-              onChange={(event) => updateForm("description", event.target.value)}
-              className="mt-1 min-h-24 w-full resize-none rounded-lg border border-input bg-white px-3 py-2 text-sm outline-none transition focus:ring-2 focus:ring-ring/30"
-              placeholder="Add context, blockers, or acceptance notes"
-            />
-          </label>
-
-          <div className="grid gap-3 sm:grid-cols-2">
             <label className="block">
-              <span className="text-xs font-semibold text-muted-foreground">Due date</span>
+              <span className="text-xs font-semibold text-muted-foreground">Title</span>
               <input
-                type="date"
-                value={form.dueDate}
-                onChange={(event) => updateForm("dueDate", event.target.value)}
+                value={form.title}
+                onChange={(event) => updateForm("title", event.target.value)}
                 className="mt-1 h-10 w-full rounded-lg border border-input bg-white px-3 text-sm outline-none transition focus:ring-2 focus:ring-ring/30"
+                placeholder="Write release notes"
+                autoFocus
               />
             </label>
-            <label className="block">
-              <span className="text-xs font-semibold text-muted-foreground">Priority</span>
-              <select
-                value={form.priority}
-                onChange={(event) => updateForm("priority", event.target.value as TaskForm["priority"])}
-                className="mt-1 h-10 w-full rounded-lg border border-input bg-white px-3 text-sm outline-none transition focus:ring-2 focus:ring-ring/30"
-              >
-                {priorities.map((priority) => (
-                  <option key={priority} value={priority}>
-                    {priority}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
 
-          <div>
-            <p className="text-xs font-semibold text-muted-foreground">Labels</p>
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {form.labels.map((label, index) => (
-                <button
-                  key={`${label.name}-${label.color}-${index}`}
-                  type="button"
-                  onClick={() => updateForm("labels", form.labels.filter((_, labelIndex) => labelIndex !== index))}
-                  className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-semibold text-white"
-                  style={{ backgroundColor: label.color }}
-                  title="Remove label"
+            <label className="block">
+              <span className="text-xs font-semibold text-muted-foreground">Description</span>
+              <textarea
+                value={form.description}
+                onChange={(event) => updateForm("description", event.target.value)}
+                className="mt-1 min-h-24 w-full resize-none rounded-lg border border-input bg-white px-3 py-2 text-sm outline-none transition focus:ring-2 focus:ring-ring/30"
+                placeholder="Add context, blockers, or acceptance notes"
+              />
+            </label>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block">
+                <span className="text-xs font-semibold text-muted-foreground">Due date</span>
+                <input
+                  type="date"
+                  value={form.dueDate}
+                  onChange={(event) => updateForm("dueDate", event.target.value)}
+                  className="mt-1 h-10 w-full rounded-lg border border-input bg-white px-3 text-sm outline-none transition focus:ring-2 focus:ring-ring/30"
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold text-muted-foreground">Priority</span>
+                <select
+                  value={form.priority}
+                  onChange={(event) => updateForm("priority", event.target.value as TaskForm["priority"])}
+                  className="mt-1 h-10 w-full rounded-lg border border-input bg-white px-3 text-sm outline-none transition focus:ring-2 focus:ring-ring/30"
                 >
-                  {label.name}
-                  <X className="h-3 w-3" aria-hidden="true" />
-                </button>
-              ))}
+                  {priorities.map((priority) => (
+                    <option key={priority} value={priority}>
+                      {priority}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
-            <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_auto_auto]">
-              <input
-                value={labelName}
-                onChange={(event) => setLabelName(event.target.value)}
-                className="h-10 rounded-lg border border-input bg-white px-3 text-sm outline-none transition focus:ring-2 focus:ring-ring/30"
-                placeholder="Frontend"
-              />
-              <select
-                value={labelColor}
-                onChange={(event) => setLabelColor(event.target.value)}
-                className="h-10 rounded-lg border border-input bg-white px-3 text-sm outline-none transition focus:ring-2 focus:ring-ring/30"
-              >
-                {labelColors.map((color) => (
-                  <option key={color} value={color}>
-                    {color}
-                  </option>
+
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground">Labels</p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {form.labels.map((label, index) => (
+                  <button
+                    key={`${label.name}-${label.color}-${index}`}
+                    type="button"
+                    onClick={() => updateForm("labels", form.labels.filter((_, labelIndex) => labelIndex !== index))}
+                    className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-semibold text-white"
+                    style={{ backgroundColor: label.color }}
+                    title="Remove label"
+                  >
+                    {label.name}
+                    <X className="h-3 w-3" aria-hidden="true" />
+                  </button>
                 ))}
-              </select>
-              <Button type="button" variant="outline" className="h-10 rounded-lg bg-white text-xs" onClick={addLabel}>
-                Add
+              </div>
+              <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_auto_auto]">
+                <input
+                  value={labelName}
+                  onChange={(event) => setLabelName(event.target.value)}
+                  className="h-10 rounded-lg border border-input bg-white px-3 text-sm outline-none transition focus:ring-2 focus:ring-ring/30"
+                  placeholder="Frontend"
+                />
+                <select
+                  value={labelColor}
+                  onChange={(event) => setLabelColor(event.target.value)}
+                  className="h-10 rounded-lg border border-input bg-white px-3 text-sm outline-none transition focus:ring-2 focus:ring-ring/30"
+                >
+                  {labelColors.map((color) => (
+                    <option key={color} value={color}>
+                      {color}
+                    </option>
+                  ))}
+                </select>
+                <Button type="button" variant="outline" className="h-10 rounded-lg bg-white text-xs" onClick={addLabel}>
+                  Add
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className="flex items-center gap-2 rounded-lg border border-border bg-white px-3 py-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={form.syncCalendar}
+                  onChange={(event) => updateForm("syncCalendar", event.target.checked)}
+                  className="h-4 w-4 accent-emerald-600"
+                />
+                <CalendarDays className="h-4 w-4 text-sky-600" aria-hidden="true" />
+                Sync calendar
+              </label>
+              <label className="flex items-center gap-2 rounded-lg border border-border bg-white px-3 py-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={form.linkNotes}
+                  onChange={(event) => updateForm("linkNotes", event.target.checked)}
+                  className="h-4 w-4 accent-emerald-600"
+                />
+                <NotebookTabs className="h-4 w-4 text-amber-600" aria-hidden="true" />
+                Link notes
+              </label>
+            </div>
+
+            {error && <div className="rounded-lg border border-destructive/25 bg-red-50 px-3 py-2 text-sm text-destructive">{error}</div>}
+
+            <div className="flex flex-col-reverse gap-2 pt-4 sm:flex-row sm:justify-end">
+              <Button type="button" variant="outline" className="h-9 rounded-lg bg-white text-xs" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                className="h-9 rounded-lg bg-foreground text-xs text-background hover:bg-foreground/90"
+                onClick={() => void handleSubmit()}
+                disabled={saving || !form.title.trim() || !form.dueDate}
+              >
+                {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <Save className="mr-2 h-4 w-4" aria-hidden="true" />}
+                Save task
               </Button>
             </div>
-          </div>
-
-          <div className="grid gap-2 sm:grid-cols-2">
-            <label className="flex items-center gap-2 rounded-lg border border-border bg-white px-3 py-2 text-sm">
-              <input
-                type="checkbox"
-                checked={form.syncCalendar}
-                onChange={(event) => updateForm("syncCalendar", event.target.checked)}
-                className="h-4 w-4 accent-emerald-600"
-              />
-              <CalendarDays className="h-4 w-4 text-sky-600" aria-hidden="true" />
-              Sync calendar
-            </label>
-            <label className="flex items-center gap-2 rounded-lg border border-border bg-white px-3 py-2 text-sm">
-              <input
-                type="checkbox"
-                checked={form.linkNotes}
-                onChange={(event) => updateForm("linkNotes", event.target.checked)}
-                className="h-4 w-4 accent-emerald-600"
-              />
-              <NotebookTabs className="h-4 w-4 text-amber-600" aria-hidden="true" />
-              Link notes
-            </label>
-          </div>
-
-          {error && <div className="rounded-lg border border-destructive/25 bg-red-50 px-3 py-2 text-sm text-destructive">{error}</div>}
-
-          <div className="flex flex-col-reverse gap-2 pt-4 sm:flex-row sm:justify-end">
-            <Button type="button" variant="outline" className="h-9 rounded-lg bg-white text-xs" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              className="h-9 rounded-lg bg-foreground text-xs text-background hover:bg-foreground/90"
-              onClick={() => void handleSubmit()}
-              disabled={saving || !form.title.trim() || !form.dueDate}
-            >
-              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <Save className="mr-2 h-4 w-4" aria-hidden="true" />}
-              Save task
-            </Button>
-          </div>
-        </form>
+          </form>
         </div>
 
-        {/* Task Comments Section */}
         {task && (
           <div className="flex flex-col w-full md:w-[400px] lg:w-[450px] shrink-0 bg-slate-50/50 dark:bg-muted/10 border-t md:border-t-0 md:border-l border-border h-full max-h-[100dvh] overflow-hidden">
             <div className="flex items-center gap-2.5 p-6 pb-4 border-b border-border/50 bg-white/50 dark:bg-background/50">
