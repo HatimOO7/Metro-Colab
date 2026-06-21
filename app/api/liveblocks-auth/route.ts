@@ -5,55 +5,62 @@ import { db } from "@/db";
 import { kanbanBoards, users } from "@/db/schema";
 import { parseUserInboxEmail } from "@/lib/liveblocks-shared";
 import { ensureUserInboxRoom, ensureWhiteboardRoom } from "@/lib/liveblocks-whiteboard";
-import { getWhiteboardOwnerEmail, getWhiteboardWithAccess } from "@/lib/whiteboard";
+import { getWhiteboardWithAccess } from "@/lib/whiteboard";
 import { getSpaceWithAccess } from "@/lib/spaces";
 import { getPageWithSpaceAccess } from "@/lib/pages";
 import { eq } from "drizzle-orm";
-
+ 
 const liveblocks = new Liveblocks({
   secret: process.env.LIVEBLOCKS_SECRET_KEY!,
 });
-
+ 
 export async function POST(request: Request) {
   try {
-    const { userId } = await auth();
     
+    const [{ userId }, body] = await Promise.all([
+      auth(),
+      request.json(),
+    ]);
+ 
     if (!userId) {
       return new NextResponse("Unauthorized", { status: 401 });
     }
-
+ 
     const dbUser = await db.query.users.findFirst({
       where: eq(users.clerkId, userId),
     });
-
+ 
     if (!dbUser || !dbUser.email) {
       return new NextResponse("User not found or no email in database", { status: 404 });
     }
-
-    const body = await request.json();
+ 
     const { room } = body;
-
     const email = dbUser.email.toLowerCase();
-
+ 
     const userInfo = {
-      name: dbUser.name || (dbUser.firstName ? `${dbUser.firstName} ${dbUser.lastName ?? ""}`.trim() : email),
+      name:
+        dbUser.name ||
+        (dbUser.firstName
+          ? `${dbUser.firstName} ${dbUser.lastName ?? ""}`.trim()
+          : email),
       email,
       avatar: dbUser.imageUrl ?? undefined,
     };
-
+ 
     const session = liveblocks.prepareSession(email, { userInfo });
-
+ 
     if (room && room.startsWith("kanban-board-")) {
       const boardId = parseInt(room.replace("kanban-board-", ""), 10);
       if (!isNaN(boardId)) {
         const board = await db.query.kanbanBoards.findFirst({
           where: eq(kanbanBoards.id, boardId),
         });
-
+ 
         if (board) {
           if (
             board.userId === dbUser.id ||
-            (board.sharedEmails && board.sharedEmails.map((e) => e.toLowerCase()).includes(email))
+            (board.sharedEmails &&
+              board.sharedEmails.map((e) => e.toLowerCase()).includes(email))
           ) {
             session.allow(room, session.FULL_ACCESS);
           } else {
@@ -68,14 +75,11 @@ export async function POST(request: Request) {
       if (!isNaN(boardId)) {
         const board = await getWhiteboardWithAccess(boardId, dbUser.id, email);
         if (board) {
-          getWhiteboardOwnerEmail(board.userId).then((ownerEmail) => {
-            if (ownerEmail) {
-              ensureWhiteboardRoom(boardId, ownerEmail, board.name).catch((err) =>
-                console.error("Background ensureWhiteboardRoom failed:", err)
-              );
-            }
-          }).catch((err) => console.error(err));
           
+          ensureWhiteboardRoom(boardId, email, board.name).catch((err) =>
+            console.error("Background ensureWhiteboardRoom failed:", err)
+          );
+ 
           session.allow(room, session.FULL_ACCESS);
         } else {
           return new NextResponse("Forbidden", { status: 403 });
@@ -118,7 +122,7 @@ export async function POST(request: Request) {
     } else {
       return new NextResponse("Invalid room", { status: 400 });
     }
-
+ 
     const { status, body: authBody } = await session.authorize();
     return new NextResponse(authBody, { status });
   } catch (error) {
