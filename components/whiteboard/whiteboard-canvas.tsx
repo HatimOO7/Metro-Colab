@@ -57,6 +57,15 @@ type WhiteboardCanvasProps = {
   canvasRef: React.RefObject<WhiteboardCanvasHandle | null>;
 };
 
+let _excalidrawModulePromise: Promise<typeof import("@excalidraw/excalidraw")> | null = null;
+
+function getExcalidrawModule() {
+  if (!_excalidrawModulePromise) {
+    _excalidrawModulePromise = import("@excalidraw/excalidraw");
+  }
+  return _excalidrawModulePromise;
+}
+
 function randomId(prefix: string) {
   return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
 }
@@ -105,7 +114,7 @@ function CanvasInner({
   React.useEffect(() => {
     let live = true;
 
-    import("@excalidraw/excalidraw").then(({ restoreElements }) => {
+    getExcalidrawModule().then(({ restoreElements }) => {
       if (!live) return;
       try {
         const raw = JSON.parse(latestStoredJson.current);
@@ -129,7 +138,7 @@ function CanvasInner({
     if (!ready || !excalidrawRef.current) return;
     if (storedElementsJson === lastSyncedJson.current) return;
 
-    import("@excalidraw/excalidraw").then(({ restoreElements }) => {
+    getExcalidrawModule().then(({ restoreElements }) => {
       if (!excalidrawRef.current) return;
       try {
         const safe = restoreElements(JSON.parse(storedElementsJson), null);
@@ -150,18 +159,21 @@ function CanvasInner({
   const handleChange = React.useCallback(
     (elements: readonly ExcalidrawElement[]) => {
       if (!ready) return;
-      const json = JSON.stringify(elements);
-      if (json === lastSyncedJson.current) return;
 
-      onSaveStatusChange("saving");
       if (saveTimer.current) clearTimeout(saveTimer.current);
+      onSaveStatusChange("saving");
 
       saveTimer.current = setTimeout(() => {
+        const json = JSON.stringify(elements);
+        if (json === lastSyncedJson.current) {
+          onSaveStatusChange("idle");
+          return;
+        }
         lastSyncedJson.current = json;
         updateCanvas(elements);
         onSaveStatusChange("saved");
-        saveTimer.current = setTimeout(() => onSaveStatusChange("idle"), 1500);
-      }, 500);
+        saveTimer.current = setTimeout(() => onSaveStatusChange("idle"), 1000);
+      }, 300);
     },
     [ready, onSaveStatusChange, updateCanvas],
   );
@@ -185,7 +197,7 @@ function CanvasInner({
     async exportPng() {
       const api = excalidrawRef.current;
       if (!api) return;
-      const { exportToBlob } = await import("@excalidraw/excalidraw");
+      const { exportToBlob } = await getExcalidrawModule();
       const blob = await exportToBlob({
         elements: api.getSceneElements(),
         appState: { ...api.getAppState(), exportBackground: true },

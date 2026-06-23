@@ -112,33 +112,27 @@ async function readJson(response: Response) {
   return payload;
 }
 
-export function DashboardPage({
-  onCreateTask,
-  onCreateNote,
-  onCreateReminder,
-  onOpenWhiteboard,
-  onCreateTemplate,
-}: DashboardPageProps) {
-  const { signOut } = useClerk();
+const DashboardCtx = React.createContext<{
+  data: DashboardData | null;
+  loading: boolean;
+  error: string | null;
+  reload: () => Promise<void>;
+  setData: React.Dispatch<React.SetStateAction<DashboardData | null>>;
+  setError: React.Dispatch<React.SetStateAction<string | null>>;
+} | null>(null);
+
+export function DashboardDataProvider({ children }: { children: React.ReactNode }) {
   const [data, setData] = React.useState<DashboardData | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
-  const [saving, setSaving] = React.useState<string | null>(null);
-  const [categoryDraft, setCategoryDraft] = React.useState({ scope: "calendar", name: "", color: "sky", icon: "Tag" });
-  const [inviteEmail, setInviteEmail] = React.useState("");
-  const [inviteResourceId, setInviteResourceId] = React.useState("");
-  const [userSearch, setUserSearch] = React.useState("");
-  const [searchResults, setSearchResults] = React.useState<Array<{ email: string; name: string }>>([]);
-  const [deletePassword, setDeletePassword] = React.useState("");
-  const [deletePreview, setDeletePreview] = React.useState<any | null>(null);
 
   const reload = React.useCallback(async () => {
     setError(null);
     try {
       const payload = await readJson(await fetch("/api/dashboard", { cache: "no-store" }));
       setData(payload as DashboardData);
-    } catch (fetchError) {
-      setError(fetchError instanceof Error ? fetchError.message : "Unable to load dashboard");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unable to load dashboard");
     } finally {
       setLoading(false);
     }
@@ -148,28 +142,67 @@ export function DashboardPage({
     void reload();
   }, [reload]);
 
+  return (
+    <DashboardCtx.Provider value={{ data, loading, error, reload, setData, setError }}>
+      {children}
+    </DashboardCtx.Provider>
+  );
+}
+
+export function useDashboardData() {
+  const ctx = React.useContext(DashboardCtx);
+  if (!ctx) throw new Error("useDashboardData must be inside DashboardDataProvider");
+  return ctx;
+}
+
+export function DashboardContent({
+  onCreateTask,
+  onCreateNote,
+  onCreateReminder,
+  onOpenWhiteboard,
+  onCreateTemplate,
+}: DashboardPageProps) {
+  const { signOut } = useClerk();
+  const { data, loading, error, reload, setData, setError } = useDashboardData();
+  const [saving, setSaving] = React.useState<string | null>(null);
+  const [categoryDraft, setCategoryDraft] = React.useState({ scope: "calendar", name: "", color: "sky", icon: "Tag" });
+  const [inviteEmail, setInviteEmail] = React.useState("");
+  const [inviteResourceId, setInviteResourceId] = React.useState("");
+  const [userSearch, setUserSearch] = React.useState("");
+  const [searchResults, setSearchResults] = React.useState<Array<{ email: string; name: string }>>([]);
+  const [deletePassword, setDeletePassword] = React.useState("");
+  const [deletePreview, setDeletePreview] = React.useState<any | null>(null);
+
   React.useEffect(() => {
     if (userSearch.trim().length < 2) {
       setSearchResults([]);
       return;
     }
 
+    const controller = new AbortController();
     const timeout = window.setTimeout(async () => {
       try {
-        const payload = await readJson(await fetch(`/api/users/search?q=${encodeURIComponent(userSearch)}`));
+        const payload = await readJson(
+          await fetch(`/api/users/search?q=${encodeURIComponent(userSearch)}`, {
+            signal: controller.signal,
+          })
+        );
         setSearchResults(payload.users ?? []);
-      } catch {
-        setSearchResults([]);
+      } catch (e) {
+        if ((e as Error).name !== "AbortError") setSearchResults([]);
       }
     }, 250);
 
-    return () => window.clearTimeout(timeout);
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
   }, [userSearch]);
 
   async function saveProfile(formData: FormData) {
     setSaving("profile");
     try {
-      await readJson(
+      const payload = await readJson(
         await fetch("/api/me", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -179,7 +212,7 @@ export function DashboardPage({
           }),
         })
       );
-      await reload();
+      setData((prev) => (prev ? { ...prev, profile: { ...prev.profile, ...payload } } : prev));
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Unable to save profile");
     } finally {
@@ -228,15 +261,15 @@ export function DashboardPage({
     if (!categoryDraft.name.trim()) return;
     setSaving("category");
     try {
-      await readJson(
+      const payload = await readJson(
         await fetch("/api/categories", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(categoryDraft),
         })
       );
+      setData((prev) => (prev ? { ...prev, categories: [...prev.categories, payload.category] } : prev));
       setCategoryDraft({ scope: "calendar", name: "", color: "sky", icon: "Tag" });
-      await reload();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Unable to create category");
     } finally {
@@ -246,6 +279,7 @@ export function DashboardPage({
 
   async function deleteCategory(id: number) {
     setSaving(`category-${id}`);
+    setData((prev) => (prev ? { ...prev, categories: prev.categories.filter((c) => c.id !== id) } : prev));
     try {
       await readJson(
         await fetch("/api/categories", {
@@ -254,8 +288,8 @@ export function DashboardPage({
           body: JSON.stringify({ id }),
         })
       );
-      await reload();
     } catch (saveError) {
+      await reload();
       setError(saveError instanceof Error ? saveError.message : "Unable to delete category");
     } finally {
       setSaving(null);
@@ -270,10 +304,25 @@ export function DashboardPage({
           ? `/api/whiteboards/invitations/${id}/${action}`
           : `/api/kanban/invitations/${id}/${action}`;
     setSaving(`${action}-${type}-${id}`);
+    setData((prev) =>
+      prev
+        ? {
+            ...prev,
+            collaboration: {
+              ...prev.collaboration,
+              invitations: prev.collaboration.invitations.filter((i) => !(i.id === id && i.type === type)),
+            },
+          }
+        : prev
+    );
     try {
       await readJson(await fetch(path, { method: "POST" }));
-      await reload();
+      if (action === "accept") {
+        const colPayload = await readJson(await fetch("/api/collaboration", { cache: "no-store" }));
+        setData((prev) => (prev ? { ...prev, collaboration: colPayload } : prev));
+      }
     } catch (saveError) {
+      await reload();
       setError(saveError instanceof Error ? saveError.message : "Unable to update invitation");
     } finally {
       setSaving(null);
@@ -300,7 +349,8 @@ export function DashboardPage({
         })
       );
       setInviteEmail("");
-      await reload();
+      const colPayload = await readJson(await fetch("/api/collaboration", { cache: "no-store" }));
+      setData((prev) => (prev ? { ...prev, collaboration: colPayload } : prev));
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Unable to send invitation");
     } finally {
@@ -326,7 +376,8 @@ export function DashboardPage({
           body: JSON.stringify({ email }),
         })
       );
-      await reload();
+      const colPayload = await readJson(await fetch("/api/collaboration", { cache: "no-store" }));
+      setData((prev) => (prev ? { ...prev, collaboration: colPayload } : prev));
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Unable to remove collaborator");
     } finally {
@@ -411,7 +462,6 @@ export function DashboardPage({
             <div className="flex min-w-0 items-center gap-3">
               <div className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-lg bg-muted">
                 {data.profile.imageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
                   <img src={data.profile.imageUrl} alt="" className="h-full w-full object-cover" />
                 ) : (
                   <UserRound className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
@@ -680,32 +730,22 @@ export function DashboardPage({
   );
 }
 
-export function SettingsPage() {
-  const [data, setData] = React.useState<DashboardData | null>(null);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+export function DashboardPage(props: DashboardPageProps) {
+  return (
+    <DashboardDataProvider>
+      <DashboardContent {...props} />
+    </DashboardDataProvider>
+  );
+}
+
+export function SettingsContent() {
+  const { data, loading, error, reload, setData, setError } = useDashboardData();
   const [saving, setSaving] = React.useState<string | null>(null);
-
-  const reload = React.useCallback(async () => {
-    setError(null);
-    try {
-      const payload = await readJson(await fetch("/api/dashboard", { cache: "no-store" }));
-      setData(payload as DashboardData);
-    } catch (fetchError) {
-      setError(fetchError instanceof Error ? fetchError.message : "Unable to load settings");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  React.useEffect(() => {
-    void reload();
-  }, [reload]);
 
   async function saveProfile(formData: FormData) {
     setSaving("profile");
     try {
-      await readJson(
+      const payload = await readJson(
         await fetch("/api/me", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -715,7 +755,7 @@ export function SettingsPage() {
           }),
         })
       );
-      await reload();
+      setData((prev) => (prev ? { ...prev, profile: { ...prev.profile, ...payload } } : prev));
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Unable to save profile");
     } finally {
@@ -772,6 +812,14 @@ export function SettingsPage() {
       )}
       <SettingsPanel data={data} saving={saving} saveProfile={saveProfile} savePreferences={savePreferences} />
     </div>
+  );
+}
+
+export function SettingsPage() {
+  return (
+    <DashboardDataProvider>
+      <SettingsContent />
+    </DashboardDataProvider>
   );
 }
 
@@ -832,7 +880,6 @@ function SettingsPanel({
   savePreferences: (patch: Partial<DashboardData["preferences"]>) => Promise<void>;
 }) {
   const { openUserProfile } = useClerk();
-
   return (
     <div className="rounded-lg border border-border bg-card p-4 shadow-soft">
       <div className="flex items-center justify-between">

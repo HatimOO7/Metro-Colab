@@ -25,10 +25,6 @@ type VideoCallPanelProps = {
   connect?: boolean;
 };
 
-// ==========================================
-// Sub-Components
-// ==========================================
-
 function VideoTiles({ onLocalScreenShareChange }: { onLocalScreenShareChange?: (active: boolean) => void }) {
   const tracks = useTracks(
     [
@@ -38,7 +34,6 @@ function VideoTiles({ onLocalScreenShareChange }: { onLocalScreenShareChange?: (
     { onlySubscribed: false }
   );
 
-  // Hide local user's own screen share to prevent Infinity Mirror
   const displayTracks = tracks.filter((t) => {
     if (t.source === Track.Source.ScreenShare && t.participant.isLocal) {
       return false;
@@ -46,17 +41,13 @@ function VideoTiles({ onLocalScreenShareChange }: { onLocalScreenShareChange?: (
     return true;
   });
 
-  // Find remote screen share track to focus it
   const screenShareTrack = displayTracks.find((t) => t.source === Track.Source.ScreenShare);
   const otherTracks = displayTracks.filter((t) => t !== screenShareTrack);
 
-  // Detect if LOCAL user is screen sharing
   const localScreenShare = tracks.find(
     (t) => t.source === Track.Source.ScreenShare && t.participant.isLocal
   );
 
-  // Notify parent when local screen share starts/stops
-  // FIX: Using !! to get stable boolean for dependency comparison
   const isLocalSharing = !!localScreenShare;
   React.useEffect(() => {
     onLocalScreenShareChange?.(isLocalSharing);
@@ -65,14 +56,11 @@ function VideoTiles({ onLocalScreenShareChange }: { onLocalScreenShareChange?: (
   return (
     <div className="flex-1 w-full min-h-[280px] h-full relative bg-slate-950/90 rounded-lg overflow-hidden flex flex-col">
       {screenShareTrack ? (
-        // Remote screen share active — show it focused
         <div className="flex flex-col h-full w-full">
-          {/* Main Focused Screen Share Area */}
           <div className="flex-1 w-full relative bg-black">
             <ParticipantTile trackRef={screenShareTrack} className="absolute inset-0 w-full h-full object-contain" />
           </div>
 
-          {/* Other participants in a small strip */}
           {otherTracks.length > 0 && (
             <div className="h-[100px] w-full border-t border-slate-800 bg-black/80">
               <GridLayout tracks={otherTracks} className="w-full h-full p-1 gap-1">
@@ -82,7 +70,6 @@ function VideoTiles({ onLocalScreenShareChange }: { onLocalScreenShareChange?: (
           )}
         </div>
       ) : (
-        // No screen share — normal grid
         <GridLayout tracks={displayTracks} className="w-full h-full p-2 gap-2">
           <ParticipantTile />
         </GridLayout>
@@ -110,10 +97,6 @@ function HangUpButton() {
   );
 }
 
-// ==========================================
-// Main Component
-// ==========================================
-
 export function VideoCallPanel({ roomName, onClose, connect = true }: VideoCallPanelProps) {
   const [mounted, setMounted] = React.useState(false);
   const [token, setToken] = React.useState<string | null>(null);
@@ -122,13 +105,11 @@ export function VideoCallPanel({ roomName, onClose, connect = true }: VideoCallP
   const [loading, setLoading] = React.useState(connect);
   const [position, setPosition] = React.useState({ x: 24, y: 80 });
 
-  // Layout States
   const [isMaximized, setIsMaximized] = React.useState(false);
   const [isMinimized, setIsMinimized] = React.useState(false);
 
-  // Track whether the panel was auto-minimized due to screen share
-  // so we only auto-restore if WE triggered the minimize
   const wasAutoMinimized = React.useRef(false);
+  const isMinimizedRef = React.useRef(isMinimized);
 
   const panelRef = React.useRef<HTMLDivElement>(null);
   const dragState = React.useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(null);
@@ -136,6 +117,10 @@ export function VideoCallPanel({ roomName, onClose, connect = true }: VideoCallP
   React.useEffect(() => {
     setMounted(true);
   }, []);
+
+  React.useEffect(() => {
+    isMinimizedRef.current = isMinimized;
+  }, [isMinimized]);
 
   React.useEffect(() => {
     if (!connect) return;
@@ -183,20 +168,15 @@ export function VideoCallPanel({ roomName, onClose, connect = true }: VideoCallP
     };
   }, [connect, roomName]);
 
-  // FIX: Auto-minimize panel when local user starts screen sharing.
-  // This removes the panel from the visible screen so it won't appear
-  // in the captured stream — preventing the infinite mirror loop on
-  // the remote viewer's side.
   const handleLocalScreenShareChange = React.useCallback((active: boolean) => {
-    if (active && !isMinimized) {
+    if (active && !isMinimizedRef.current) {
       setIsMinimized(true);
       wasAutoMinimized.current = true;
     } else if (!active && wasAutoMinimized.current) {
-      // Only auto-restore if we were the ones who minimized it
       setIsMinimized(false);
       wasAutoMinimized.current = false;
     }
-  }, [isMinimized]);
+  }, []);
 
   function onPointerDown(event: React.PointerEvent<HTMLDivElement>) {
     if (isMaximized) return;
@@ -232,7 +212,6 @@ export function VideoCallPanel({ roomName, onClose, connect = true }: VideoCallP
     event.currentTarget.releasePointerCapture(event.pointerId);
   }
 
-  // Manual minimize by the user — clear auto-minimize flag
   function handleManualMinimize() {
     wasAutoMinimized.current = false;
     setIsMinimized(true);
@@ -242,7 +221,6 @@ export function VideoCallPanel({ roomName, onClose, connect = true }: VideoCallP
 
   const panelContent = (
     <>
-      {/* Minimized tray pill */}
       {isMinimized && token && (
         <div
           className="fixed bottom-6 left-6 z-[99999] bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-full shadow-2xl flex items-center gap-3 cursor-pointer transition-all animate-pulse"
@@ -261,7 +239,6 @@ export function VideoCallPanel({ roomName, onClose, connect = true }: VideoCallP
         </div>
       )}
 
-      {/* Main Panel: CSS hidden when minimized so LiveKit keeps running */}
       <div
         ref={panelRef}
         className={cn(
@@ -277,7 +254,6 @@ export function VideoCallPanel({ roomName, onClose, connect = true }: VideoCallP
             : { left: position.x, top: position.y }
         }
       >
-        {/* Header */}
         <div
           className={cn(
             "flex items-center justify-between border-b border-border bg-muted/60 px-3 py-2 select-none",
@@ -307,7 +283,7 @@ export function VideoCallPanel({ roomName, onClose, connect = true }: VideoCallP
                   title="Minimize to Tray"
                 >
                   <Minus className="h-3.5 w-3.5" />
-                </button>
+                </                button>
 
                 <button
                   type="button"
@@ -333,7 +309,6 @@ export function VideoCallPanel({ roomName, onClose, connect = true }: VideoCallP
           </div>
         </div>
 
-        {/* Body */}
         <div className="flex-1 w-full flex flex-col bg-background/40 overflow-hidden">
           {error ? (
             <div className="p-3">
@@ -358,7 +333,6 @@ export function VideoCallPanel({ roomName, onClose, connect = true }: VideoCallP
               onDisconnected={onClose}
               className="flex flex-col flex-1 w-full h-full p-2 overflow-hidden"
             >
-              {/* Pass the callback so VideoTiles can report local screen share state */}
               <VideoTiles onLocalScreenShareChange={handleLocalScreenShareChange} />
               <RoomAudioRenderer />
 

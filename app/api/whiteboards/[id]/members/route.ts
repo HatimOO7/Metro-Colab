@@ -26,29 +26,10 @@ export async function GET(_request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Board not found" }, { status: 404 });
   }
 
-  const [owner] = await db
-    .select({
-      email: users.email,
-      name: users.name,
-      firstName: users.firstName,
-      lastName: users.lastName,
-      imageUrl: users.imageUrl,
-    })
-    .from(users)
-    .where(eq(users.id, board.userId));
-
   const sharedEmails = board.sharedEmails ?? [];
   const pendingEmails = board.pendingEmails ?? [];
-
-  let allCollaborators: {
-    email: string;
-    name: string;
-    imageUrl: string | null;
-    role: "collaborator";
-  }[] = [];
-
-  if (sharedEmails.length > 0) {
-    const usersData = await db
+  const [ownerResult, collaboratorsResult] = await Promise.all([
+    db
       .select({
         email: users.email,
         name: users.name,
@@ -57,21 +38,36 @@ export async function GET(_request: Request, context: RouteContext) {
         imageUrl: users.imageUrl,
       })
       .from(users)
-      .where(inArray(users.email, sharedEmails));
+      .where(eq(users.id, board.userId)),
 
-    allCollaborators = sharedEmails.map((email) => {
-      const record = usersData.find((u) => u.email === email);
-      return {
+    sharedEmails.length > 0
+      ? db
+          .select({
+            email: users.email,
+            name: users.name,
+            firstName: users.firstName,
+            lastName: users.lastName,
+            imageUrl: users.imageUrl,
+          })
+          .from(users)
+          .where(inArray(users.email, sharedEmails))
+      : Promise.resolve([]),
+  ]);
+
+  const owner = ownerResult[0];
+
+  const allCollaborators = sharedEmails.map((email) => {
+    const record = collaboratorsResult.find((u) => u.email === email);
+    return {
+      email,
+      name:
+        record?.name?.trim() ||
+        [record?.firstName, record?.lastName].filter(Boolean).join(" ").trim() ||
         email,
-        name:
-          record?.name?.trim() ||
-          [record?.firstName, record?.lastName].filter(Boolean).join(" ").trim() ||
-          email,
-        imageUrl: record?.imageUrl ?? null,
-        role: "collaborator" as const,
-      };
-    });
-  }
+      imageUrl: record?.imageUrl ?? null,
+      role: "collaborator" as const,
+    };
+  });
 
   return NextResponse.json({
     isOwner: board.userId === user.id,

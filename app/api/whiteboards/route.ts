@@ -1,9 +1,9 @@
-import { inArray } from "drizzle-orm";
+import { desc, eq, inArray, or, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { db, users, whiteboards } from "@/db";
 import { ensureWhiteboardRoom } from "@/lib/liveblocks-whiteboard";
-import { getDatabaseUser, getWhiteboardsForUser, normalizeText } from "@/lib/whiteboard";
+import { getDatabaseUser, normalizeText } from "@/lib/whiteboard";
 
 export async function GET() {
   const user = await getDatabaseUser();
@@ -13,25 +13,26 @@ export async function GET() {
   }
 
   try {
-
-    const boards = await getWhiteboardsForUser(user.id, user.email);
-
-    const ownerIds = [...new Set(boards.map((board) => board.userId))];
-    const owners =
-      ownerIds.length > 0
-        ? await db
-          .select({ id: users.id, email: users.email })
-          .from(users)
-          .where(inArray(users.id, ownerIds))
-        : [];
-
-    const ownerEmailById = new Map(owners.map((owner) => [owner.id, owner.email]));
+    const rows = await db
+      .select({
+        board: whiteboards,
+        ownerEmail: users.email,
+      })
+      .from(whiteboards)
+      .innerJoin(users, eq(whiteboards.userId, users.id))
+      .where(
+        or(
+          eq(whiteboards.userId, user.id),
+          sql`${whiteboards.sharedEmails} @> ${JSON.stringify([user.email])}::jsonb`
+        )
+      )
+      .orderBy(desc(whiteboards.updatedAt));
 
     return NextResponse.json({
-      boards: boards.map((board) => ({
-        ...board,
-        role: board.userId === user.id ? "owner" : "collaborator",
-        ownerEmail: ownerEmailById.get(board.userId) ?? null,
+      boards: rows.map((row) => ({
+        ...row.board,
+        role: row.board.userId === user.id ? "owner" : "collaborator",
+        ownerEmail: row.ownerEmail ?? null,
       })),
     });
   } catch (error) {
@@ -71,7 +72,10 @@ export async function POST(request: Request) {
     })
     .returning();
 
-  await ensureWhiteboardRoom(board.id, user.email, board.name);
+  
+  void ensureWhiteboardRoom(board.id, user.email, board.name).catch((err) => {
+    console.error("Failed to ensure whiteboard room:", err);
+  });
 
   return NextResponse.json(
     {

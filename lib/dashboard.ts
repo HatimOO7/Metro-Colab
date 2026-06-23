@@ -94,26 +94,29 @@ export async function getOrCreatePreferences(userId: number) {
 }
 
 export async function updatePreferences(userId: number, patch: Partial<UserPreferencesData>) {
-  const existing = await db.query.userPreferences.findFirst({ where: eq(userPreferences.userId, userId) });
-  const currentPrefs = existing ? mergePreferences(existing.preferences) : defaultPreferences;
-  const next = mergePreferences({ ...currentPrefs, ...patch });
+  const next = mergePreferences(patch);
 
   const [saved] = await db
     .insert(userPreferences)
     .values({ userId, preferences: next, updatedAt: new Date() })
     .onConflictDoUpdate({
       target: userPreferences.userId,
-      set: { preferences: next, updatedAt: new Date() },
+      set: {
+        preferences: sql`${userPreferences.preferences} || ${JSON.stringify(next)}::jsonb`,
+        updatedAt: new Date(),
+      },
     })
     .returning();
+
   return mergePreferences(saved?.preferences);
 }
 
 export async function ensureDefaultCategories(userId: number) {
-  const existing = await db.select().from(userCategories).where(eq(userCategories.userId, userId));
-  if (existing.length > 0) return existing;
+  await db
+    .insert(userCategories)
+    .values(defaultCategories.map((c) => ({ userId, ...c })))
+    .onConflictDoNothing();
 
-  await db.insert(userCategories).values(defaultCategories.map((category) => ({ userId, ...category })));
   return db.select().from(userCategories).where(eq(userCategories.userId, userId));
 }
 
@@ -212,7 +215,7 @@ export async function getDashboardData(auth: AuthContext) {
     viewRows,
     pendingSpaces,
     pendingKanban,
-    pendingWhiteboards
+    pendingWhiteboards,
   ] = await Promise.all([
     getOrCreatePreferences(userId),
     ensureDefaultCategories(userId),
@@ -229,22 +232,36 @@ export async function getDashboardData(auth: AuthContext) {
     getPendingWhiteboardInvitations(email),
   ]);
 
-  const spaceIds = spaceRows.map((space) => space.id);
-  const pageRows =
+  const spaceIds = spaceRows.map((s) => s.id);
+
+  const [pageRows, collaborationData] = await Promise.all([
     spaceIds.length > 0
-      ? await db.select().from(pages).where(and(inArray(pages.spaceId, spaceIds), eq(pages.isArchived, false))).orderBy(desc(pages.updatedAt))
-      : [];
+      ? db
+          .select()
+          .from(pages)
+          .where(and(inArray(pages.spaceId, spaceIds), eq(pages.isArchived, false)))
+          .orderBy(desc(pages.updatedAt))
+      : Promise.resolve([]),
+    getCollaborationData(auth, {
+      boards,
+      whiteboardRows,
+      spaceRows,
+      pendingSpaces,
+      pendingKanban,
+      pendingWhiteboards,
+    }),
+  ]);
 
   const allTasks = boards.flatMap((board) =>
-  board.columns.flatMap((column: typeof kanbanColumns.$inferSelect & { tasks: any[] }) =>
-    column.tasks.map((task: typeof kanbanTasks.$inferSelect) => ({
-      ...task,
-      boardName: board.name,
-      columnName: column.name,
-      completed: /done|complete|closed/i.test(column.name),
-    }))
-  )
-);
+    board.columns.flatMap((column: typeof kanbanColumns.$inferSelect & { tasks: any[] }) =>
+      column.tasks.map((task: typeof kanbanTasks.$inferSelect) => ({
+        ...task,
+        boardName: board.name,
+        columnName: column.name,
+        completed: /done|complete|closed/i.test(column.name),
+      }))
+    )
+  );
 
   const overdueTasks = allTasks.filter((task) => task.dueDate && task.dueDate < todayKey() && !task.completed);
   const completedTasks = allTasks.filter((task) => task.completed);
@@ -323,7 +340,6 @@ export async function getDashboardData(auth: AuthContext) {
     ...derivedActivity,
   ].slice(0, 12);
 
-  // Time filter variables for Upcoming Schedule
   const currentDateStr = todayKey();
   const now = new Date();
   const currentHourMinute = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
@@ -351,7 +367,6 @@ export async function getDashboardData(auth: AuthContext) {
     .filter((item) => {
       if (!item.date) return false;
       if (item.date < currentDateStr) return false;
-      // If the event is today and has a time, filter out if that time has passed
       if (item.date === currentDateStr && item.time) {
         return item.time > currentHourMinute;
       }
@@ -380,16 +395,6 @@ export async function getDashboardData(auth: AuthContext) {
     ...fallbackResources,
   ].slice(0, 8);
 
-  // Fetch collaboration data earlier to use its length for consistent stats
-  const collaborationData = await getCollaborationData(auth, {
-    boards,
-    whiteboardRows,
-    spaceRows,
-    pendingSpaces,
-    pendingKanban,
-    pendingWhiteboards,
-  });
-
   return {
     profile: {
       id: userId,
@@ -410,7 +415,7 @@ export async function getDashboardData(auth: AuthContext) {
       templates: templates.length,
       spaces: spaceRows.length,
       pages: pageRows.length,
-      collaborations: collaborationData.resources.length, // Renamed key to 'collaborations' and using accurate data length
+      collaborations: collaborationData.resources.length,
       pendingInvitations: pendingSpaces.length + pendingKanban.length + pendingWhiteboards.length,
     },
     featureMetrics: [
@@ -480,18 +485,17 @@ export async function getCollaborationData(
   const resources = await Promise.all(
     [
       ...spaceRows.map((space) => {
-  return {
-    id: `space-${space.id}`,
-    resourceId: space.id,
-    type: "space",
-    name: space.name,
-    role: space.userId === userId ? "owner" : "collaborator",
-    members: (space.sharedEmails ?? []).map((email: string) => ({ email, role: "collaborator" })),
-pendingInvites: (space.pendingEmails ?? []).map((email: string) => ({ email })),
-    owner: { email: space.ownerEmail ?? "", role: "owner" },
-  };
-}),
-      // Flipped implicit any to explicit string here
+        return {
+          id: `space-${space.id}`,
+          resourceId: space.id,
+          type: "space",
+          name: space.name,
+          role: space.userId === userId ? "owner" : "collaborator",
+          members: (space.sharedEmails ?? []).map((email: string) => ({ email, role: "collaborator" })),
+          pendingInvites: (space.pendingEmails ?? []).map((email: string) => ({ email })),
+          owner: { email: space.ownerEmail ?? "", role: "owner" },
+        };
+      }),
       ...boards.map((board) => ({
         id: `kanban-${board.id}`,
         resourceId: board.id,
@@ -502,7 +506,6 @@ pendingInvites: (space.pendingEmails ?? []).map((email: string) => ({ email })),
         pendingInvites: (board.pendingEmails ?? []).map((memberEmail: string) => ({ email: memberEmail })),
         owner: { email: getBoardOwnerEmail(board), role: "owner" },
       })),
-      // Flipped implicit any to explicit string here too
       ...whiteboardRows.map((board) => ({
         id: `whiteboard-${board.id}`,
         resourceId: board.id,
@@ -672,9 +675,10 @@ export async function deleteAccount(auth: AuthContext, passwordConfirmation: str
       .where(or(eq(spaceInvitations.invitedEmail, email), eq(spaceInvitations.invitedBy, userId)))
   ]);
 
-  await db.delete(users).where(eq(users.id, userId));
-
-  const client = await getClerkClient();
+  const [, client] = await Promise.all([
+    db.delete(users).where(eq(users.id, userId)),
+    getClerkClient(),
+  ]);
   await client.users.deleteUser(auth.clerkUser.id);
 
   return { success: true };

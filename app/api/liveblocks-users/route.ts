@@ -23,7 +23,6 @@ export async function GET(request: Request) {
       },
     });
 
-    // Liveblocks resolveUsers expects an array of the same length and order as the userIds requested.
     const results = userIds.map((id) => {
       const u = dbUsers.find((user) => user.email.toLowerCase() === id.toLowerCase());
       if (u) {
